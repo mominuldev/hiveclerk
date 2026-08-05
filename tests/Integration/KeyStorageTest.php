@@ -29,17 +29,69 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass( Encryptor::class )]
 final class KeyStorageTest extends WordPressTestCase {
 
+	/**
+	 * The option this test borrows.
+	 *
+	 * Named here rather than repeated as a literal, because the whole bug
+	 * below was one literal in one teardown reaching further than it meant to.
+	 */
+	private const OPTION = 'hiveclerk_provider_keys';
+
 	private const TEST_PROVIDER = 'anthropic';
 	private const TEST_KEY      = 'sk-ant-api03-not-a-real-key-0123456789abcdef';
 
 	/**
-	 * Remove anything a test wrote.
+	 * The site's real provider keys, held while the test borrows the option.
+	 *
+	 * @var array<string, mixed>|null
+	 */
+	private ?array $preserved = null;
+
+	/**
+	 * Take a copy of whatever the site already had.
+	 *
+	 * @return void
+	 */
+	protected function setUp(): void {
+		parent::setUp();
+
+		if ( function_exists( 'get_option' ) ) {
+			$existing        = get_option( self::OPTION, null );
+			$this->preserved = is_array( $existing ) ? $existing : null;
+		}
+	}
+
+	/**
+	 * Put back exactly what was there before.
+	 *
+	 * ## What this used to do, and what it cost
+	 *
+	 * `delete_option( 'hiveclerk_provider_keys' )`. That option holds *every*
+	 * provider's key, not just the one this test writes, and the integration
+	 * suite runs against a real WordPress install — so `composer check`, the
+	 * documented gate command, silently destroyed the site's model API keys
+	 * every time it ran.
+	 *
+	 * It was invisible for three reasons at once. The tests passed, because
+	 * they only ever assert about the key they wrote themselves. Nothing
+	 * failed afterwards until something tried to *use* a provider, and the
+	 * failure surfaced as "no embedding provider is configured" — a message
+	 * that points at the settings screen rather than at the test suite. And
+	 * an integration suite is expected to leave the database dirty, so a
+	 * teardown that deletes things looks like good hygiene.
+	 *
+	 * Caught when a corpus that had embedded successfully an hour earlier
+	 * refused to embed, with the key still verified in the admin.
 	 *
 	 * @return void
 	 */
 	protected function tearDown(): void {
 		if ( function_exists( 'delete_option' ) ) {
-			delete_option( 'hiveclerk_provider_keys' );
+			if ( null === $this->preserved ) {
+				delete_option( self::OPTION );
+			} else {
+				update_option( self::OPTION, $this->preserved, false );
+			}
 		}
 
 		parent::tearDown();
