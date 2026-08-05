@@ -1,0 +1,275 @@
+@import './tokens.css';
+
+/*
+ * Utilities are emitted with !important.
+ *
+ * This is not laziness. wp-admin's stylesheets are UNLAYERED, and unlayered
+ * CSS beats layered CSS regardless of specificity or source order. Tailwind
+ * emits everything into @layer, so without this every wp-admin rule for a,
+ * h1, p, button and input silently wins. Measured before this change:
+ * headings rendered #1d2327 and links #3858e9 instead of our tokens.
+ */
+@import 'tailwindcss' important;
+
+/* The theme toggle stamps data-theme on <html> and must win both ways. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme inline {
+  --font-display: var(--hvc-font-display);
+  --font-sans: var(--hvc-font-ui);
+  --font-mono: var(--hvc-font-mono);
+
+  --color-canvas: var(--hvc-canvas);
+  --color-surface: var(--hvc-surface);
+  --color-surface-sunken: var(--hvc-surface-sunken);
+  --color-surface-hover: var(--hvc-surface-hover);
+  --color-border: var(--hvc-border);
+  --color-border-strong: var(--hvc-border-strong);
+
+  --color-content: var(--hvc-text);
+  --color-content-secondary: var(--hvc-text-secondary);
+  --color-content-tertiary: var(--hvc-text-tertiary);
+  --color-content-inverse: var(--hvc-text-inverse);
+
+  --color-accent: var(--hvc-accent);
+  --color-accent-hover: var(--hvc-accent-hover);
+  --color-accent-subtle: var(--hvc-accent-subtle);
+  --color-accent-text: var(--hvc-accent-text);
+  --color-on-accent: var(--hvc-on-accent);
+
+  --color-spectrum-1: var(--hvc-spectrum-1);
+  --color-spectrum-2: var(--hvc-spectrum-2);
+  --color-spectrum-3: var(--hvc-spectrum-3);
+
+  --color-on-duty: var(--hvc-on-duty);
+  --color-indexing: var(--hvc-indexing);
+  --color-paused: var(--hvc-paused);
+  --color-draft: var(--hvc-draft);
+  --color-warning: var(--hvc-warning);
+  --color-danger: var(--hvc-danger);
+
+  --radius-sm: var(--hvc-radius-sm);
+  --radius-md: var(--hvc-radius-md);
+  --radius-lg: var(--hvc-radius-lg);
+  --radius-xl: var(--hvc-radius-xl);
+  --radius-2xl: var(--hvc-radius-2xl);
+
+  --shadow-sm: var(--hvc-shadow-sm);
+  --shadow-md: var(--hvc-shadow-md);
+  --shadow-lg: var(--hvc-shadow-lg);
+}
+
+/* =======================================================================
+ * Escaping wp-admin
+ *
+ * The admin bar stays — hiding it would trap the operator inside our app.
+ * Everything else in the chrome gets out of the way.
+ * ==================================================================== */
+
+body.hvc-page #wpcontent {
+  padding-left: 0;
+}
+
+body.hvc-page #wpbody-content {
+  padding-bottom: 0;
+}
+
+body.hvc-page #wpfooter,
+body.hvc-page .update-nag,
+body.hvc-page .notice,
+body.hvc-page #screen-meta,
+body.hvc-page #screen-meta-links {
+  display: none;
+}
+
+/*
+ * #wpcontent already carries margin-left for the admin menu (160px, or 36px
+ * folded). The app starts at its content box and never reaches left of it.
+ * A negative margin here previously pulled the sidebar 20px underneath the
+ * menu and clipped it.
+ */
+#hvc-root {
+  margin: 0;
+  font-family: var(--hvc-font-ui);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--hvc-text);
+  background-color: var(--hvc-canvas);
+  background-image: var(--hvc-ambient);
+  background-attachment: fixed;
+  min-height: calc(100vh - 32px);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media screen and (max-width: 782px) {
+  #hvc-root {
+    min-height: calc(100vh - 46px);
+  }
+}
+
+/* =======================================================================
+ * Scoped reset
+ *
+ * Unlayered and #hvc-root-scoped so it outranks wp-admin's element rules.
+ * Utilities are !important, so they still outrank this where applied — the
+ * reset only supplies defaults for anything a utility does not set.
+ * ==================================================================== */
+
+#hvc-root *,
+#hvc-root *::before,
+#hvc-root *::after {
+  box-sizing: border-box;
+}
+
+#hvc-root a {
+  color: inherit;
+  text-decoration: none;
+  transition: none;
+  box-shadow: none;
+}
+
+#hvc-root a:hover,
+#hvc-root a:focus {
+  color: inherit;
+  box-shadow: none;
+}
+
+#hvc-root h1,
+#hvc-root h2,
+#hvc-root h3,
+#hvc-root h4,
+#hvc-root h5,
+#hvc-root h6,
+#hvc-root p,
+#hvc-root dl,
+#hvc-root dd,
+#hvc-root ul,
+#hvc-root ol,
+#hvc-root figure {
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+#hvc-root ul,
+#hvc-root ol {
+  list-style: none;
+}
+
+#hvc-root button,
+#hvc-root input,
+#hvc-root select,
+#hvc-root textarea {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+
+#hvc-root button {
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+#hvc-root svg {
+  display: block;
+}
+
+/* Focus is restyled, never removed. */
+#hvc-root :focus-visible {
+  outline: 2px solid var(--hvc-accent);
+  outline-offset: 2px;
+  border-radius: var(--hvc-radius-sm);
+}
+
+/* =======================================================================
+ * Brand surface and motion
+ * ==================================================================== */
+
+.hvc-gradient-brand {
+  background-image: var(--hvc-gradient-brand);
+}
+
+.hvc-gradient-text {
+  background-image: var(--hvc-gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* A hairline that fades along its length — the edge treatment used on the
+   shell's structural dividers. */
+.hvc-hairline-x {
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    var(--hvc-border) 12%,
+    var(--hvc-border) 88%,
+    transparent
+  );
+}
+
+/*
+ * The select caret.
+ *
+ * Written as a class rather than a bg-[url(...)] utility because
+ * tailwind-merge treats every bg-* utility as one conflict group: adding
+ * an arbitrary background-image next to bg-surface-sunken made it drop the
+ * colour, and wp-admin's unlayered `select { background: #fff ... }` then
+ * won. Measured: the control rendered white in dark mode with light text
+ * on it.
+ */
+#hvc-root .hvc-select-caret {
+  /* Id-scoped so it outranks wp-admin's own `.wp-core-ui select` arrow,
+     which is unlayered and more specific than a bare class. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 14px;
+}
+
+@keyframes hvc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.hvc-pulse {
+  animation: hvc-pulse 2s var(--hvc-ease-standard) infinite;
+}
+
+@keyframes hvc-drift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* The logomark breathes. One animated element in the whole product. */
+.hvc-drift {
+  background-size: 200% 200%;
+  animation: hvc-drift 9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #hvc-root *,
+  #hvc-root *::before,
+  #hvc-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

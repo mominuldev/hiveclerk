@@ -1,0 +1,59 @@
+parameters:
+    level: 8
+    phpVersion: 80300
+
+    paths:
+        - src
+        - hiveclerk.php
+        - uninstall.php
+
+    bootstrapFiles:
+        - tools/phpstan/bootstrap.php
+
+    # Action Scheduler is not a Composer dependency — it ships inside
+    # WooCommerce and many other plugins, and ActionSchedulerQueue guards
+    # every call with function_exists(). Declaring the signatures keeps
+    # those calls fully type-checked, which suppressing function.notFound
+    # would not. The file is scanned for symbols, never loaded at runtime.
+    scanFiles:
+        - tools/phpstan/action-scheduler-stubs.php
+        - tools/phpstan/woocommerce-stubs.php
+
+    scanDirectories:
+        - vendor
+
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: true
+
+    ignoreErrors:
+        # hiveclerk.php stays PHP 5.6-parseable so the version guard can run
+        # on unsupported hosts, which rules out typed array shapes there.
+        - identifier: missingType.iterableValue
+          path: hiveclerk.php
+
+        # wpdb::prepare() is typed literal-string to catch injection at
+        # compile time. Table identifiers cannot be bound as placeholders, so
+        # every query in the repository layer interpolates a table name and
+        # defeats that inference.
+        #
+        # Narrowly scoped to src/Database because two other controls already
+        # cover what literal-string would have: Schema::table() validates
+        # every identifier against a hard-coded allowlist and throws
+        # otherwise, and the hiveclerk.noGlobalWpdb rule fails the build if
+        # SQL appears anywhere outside this directory. All *values* still go
+        # through placeholders.
+        -
+            identifier: argument.type
+            message: '#expects literal-string, .* given#'
+            paths:
+                - src/Database
+
+services:
+    -
+        class: Hiveclerk\Tools\PHPStan\DomainPurityRule
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Hiveclerk\Tools\PHPStan\NoGlobalWpdbRule
+        tags:
+            - phpstan.rules.rule

@@ -1,0 +1,211 @@
+/**
+ * Hiveclerk design tokens.
+ *
+ * Ink and paper with colour rationed: the base UI is achromatic, and colour
+ * is spent on duty status, the single primary action on a screen, and the
+ * brand surface.
+ *
+ * The brand surface is a spectral gradient — indigo through violet to cyan.
+ * It is the one place the product allows itself to look like software that
+ * thinks. It never carries text and never signals state, so it cannot be
+ * confused with a status colour.
+ *
+ * Components reference semantic tokens only. No component uses a primitive
+ * directly and no component contains a hard-coded hex.
+ */
+
+:root {
+  /* ---- Primitives: ink ------------------------------------------------ */
+  --hvc-ink-0: #ffffff;
+  --hvc-ink-25: #fafbfc;
+  --hvc-ink-50: #f5f6f8;
+  --hvc-ink-100: #edeff3;
+  --hvc-ink-200: #e3e6eb;
+  --hvc-ink-300: #cbd1da;
+  --hvc-ink-400: #9ba3b0;
+  --hvc-ink-500: #6b7280;
+  --hvc-ink-600: #545c6b;
+  --hvc-ink-700: #363c46;
+  --hvc-ink-800: #262b33;
+  --hvc-ink-900: #1c2027;
+  --hvc-ink-950: #14171d;
+  --hvc-ink-990: #0b0d11;
+
+  /* ---- Primitives: accent (stamp-ink blue) ---------------------------- */
+  --hvc-accent-50: #eef2ff;
+  --hvc-accent-100: #dce4fe;
+  --hvc-accent-300: #93a8f5;
+  --hvc-accent-400: #5a78f0;
+  --hvc-accent-500: #3b5bdb;
+  --hvc-accent-600: #2b4acb;
+  --hvc-accent-700: #2440b4;
+
+  /* ---- Primitives: spectrum (brand surface only) ---------------------- */
+  --hvc-spectrum-1: #6366f1;
+  --hvc-spectrum-2: #8b5cf6;
+  --hvc-spectrum-3: #22d3ee;
+
+  /* ---- Primitives: functional ----------------------------------------- */
+  --hvc-emerald-500: #059669;
+  --hvc-emerald-400: #34d399;
+  --hvc-amber-500: #d97706;
+  --hvc-amber-400: #fbbf24;
+  --hvc-red-500: #dc2626;
+  --hvc-red-400: #f87171;
+  --hvc-slate-500: #64748b;
+  --hvc-slate-400: #94a3b8;
+
+  /* ---- Type ------------------------------------------------------------ */
+  --hvc-font-display:
+    'Archivo Expanded', 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --hvc-font-ui:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --hvc-font-mono:
+    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ---- Space ----------------------------------------------------------- */
+  --hvc-space-1: 4px;
+  --hvc-space-2: 8px;
+  --hvc-space-3: 12px;
+  --hvc-space-4: 16px;
+  --hvc-space-5: 20px;
+  --hvc-space-6: 24px;
+  --hvc-space-8: 32px;
+  --hvc-space-10: 40px;
+  --hvc-space-12: 48px;
+  --hvc-space-16: 64px;
+
+  /* ---- Radius ---------------------------------------------------------- */
+  --hvc-radius-sm: 4px;
+  --hvc-radius-md: 6px;
+  --hvc-radius-lg: 10px;
+  --hvc-radius-xl: 14px;
+  --hvc-radius-2xl: 18px;
+
+  /* ---- Layout ---------------------------------------------------------- */
+  --hvc-sidebar-width: 268px;
+  --hvc-rail-width: 60px;
+  --hvc-header-height: 60px;
+  --hvc-content-max: 1320px;
+
+  /* ---- Motion ---------------------------------------------------------- */
+  --hvc-duration-fast: 120ms;
+  --hvc-duration-base: 180ms;
+  --hvc-duration-slow: 260ms;
+  --hvc-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --hvc-ease-decelerate: cubic-bezier(0, 0, 0, 1);
+  --hvc-ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
+
+  /* ---- Brand surface --------------------------------------------------- */
+  --hvc-gradient-brand: linear-gradient(
+    135deg,
+    var(--hvc-spectrum-1) 0%,
+    var(--hvc-spectrum-2) 48%,
+    var(--hvc-spectrum-3) 100%
+  );
+  --hvc-gradient-brand-soft: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--hvc-spectrum-1) 22%, transparent) 0%,
+    color-mix(in oklab, var(--hvc-spectrum-3) 18%, transparent) 100%
+  );
+}
+
+/* ---- Semantic tokens: light -------------------------------------------- */
+:root,
+:root[data-theme='light'] {
+  --hvc-canvas: var(--hvc-ink-50);
+  --hvc-surface: var(--hvc-ink-0);
+  --hvc-surface-sunken: var(--hvc-ink-100);
+  --hvc-surface-hover: var(--hvc-ink-50);
+  --hvc-border: var(--hvc-ink-200);
+  --hvc-border-strong: var(--hvc-ink-300);
+
+  --hvc-text: #101319;
+  --hvc-text-secondary: var(--hvc-ink-600);
+  --hvc-text-tertiary: var(--hvc-ink-500);
+  --hvc-text-inverse: var(--hvc-ink-0);
+
+  --hvc-accent: var(--hvc-accent-600);
+  --hvc-accent-hover: var(--hvc-accent-700);
+  --hvc-accent-subtle: var(--hvc-accent-50);
+  --hvc-accent-text: var(--hvc-accent-700);
+  --hvc-on-accent: var(--hvc-ink-0);
+
+  --hvc-on-duty: var(--hvc-emerald-500);
+  --hvc-indexing: var(--hvc-accent-600);
+  --hvc-paused: var(--hvc-slate-500);
+  --hvc-draft: var(--hvc-ink-400);
+  --hvc-warning: var(--hvc-amber-500);
+  --hvc-danger: var(--hvc-red-500);
+
+  --hvc-shadow-sm: 0 1px 2px rgb(16 19 25 / 0.05);
+  --hvc-shadow-md:
+    0 2px 4px rgb(16 19 25 / 0.06), 0 1px 2px rgb(16 19 25 / 0.04);
+  --hvc-shadow-lg:
+    0 8px 24px rgb(16 19 25 / 0.1), 0 2px 6px rgb(16 19 25 / 0.06);
+
+  /* Top-edge highlight that reads as a lit surface. */
+  --hvc-elevate: inset 0 1px 0 rgb(255 255 255 / 0.8);
+  /* Ambient wash behind the shell. Deliberately faint. */
+  --hvc-ambient:
+    radial-gradient(
+      70rem 34rem at 78% -18%,
+      color-mix(in oklab, var(--hvc-spectrum-2) 10%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      52rem 26rem at 4% 0%,
+      color-mix(in oklab, var(--hvc-spectrum-3) 8%, transparent),
+      transparent 58%
+    );
+}
+
+/* ---- Semantic tokens: dark --------------------------------------------- */
+/*
+ * Depth in dark mode comes from surface lightness stepping plus a hairline
+ * top highlight, not from shadow — shadows are close to invisible on dark
+ * surfaces.
+ */
+:root[data-theme='dark'] {
+  --hvc-canvas: var(--hvc-ink-990);
+  --hvc-surface: var(--hvc-ink-950);
+  --hvc-surface-sunken: #0f1218;
+  --hvc-surface-hover: var(--hvc-ink-900);
+  --hvc-border: #232830;
+  --hvc-border-strong: var(--hvc-ink-700);
+
+  --hvc-text: #eef0f4;
+  --hvc-text-secondary: #a3abb8;
+  --hvc-text-tertiary: #7d8593;
+  --hvc-text-inverse: var(--hvc-ink-990);
+
+  --hvc-accent: var(--hvc-accent-400);
+  --hvc-accent-hover: var(--hvc-accent-300);
+  --hvc-accent-subtle: rgb(90 120 240 / 0.16);
+  --hvc-accent-text: var(--hvc-accent-300);
+  --hvc-on-accent: #ffffff;
+
+  --hvc-on-duty: var(--hvc-emerald-400);
+  --hvc-indexing: var(--hvc-accent-400);
+  --hvc-paused: var(--hvc-slate-400);
+  --hvc-draft: var(--hvc-ink-500);
+  --hvc-warning: var(--hvc-amber-400);
+  --hvc-danger: var(--hvc-red-400);
+
+  --hvc-shadow-sm: none;
+  --hvc-shadow-md: 0 2px 8px rgb(0 0 0 / 0.36);
+  --hvc-shadow-lg: 0 16px 40px rgb(0 0 0 / 0.5);
+
+  --hvc-elevate: inset 0 1px 0 rgb(255 255 255 / 0.055);
+  --hvc-ambient:
+    radial-gradient(
+      70rem 34rem at 78% -18%,
+      color-mix(in oklab, var(--hvc-spectrum-2) 16%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      52rem 26rem at 4% 0%,
+      color-mix(in oklab, var(--hvc-spectrum-3) 11%, transparent),
+      transparent 58%
+    );
+}

@@ -1,0 +1,29 @@
+# Dependencies
+/vendor/
+/node_modules/
+
+# Build output is committed for release, but not the local dev cache.
+/assets/admin/.vite/manifest.json.tmp
+.vite/
+
+# Tooling caches
+/.phpunit.cache/
+/.phpunit.result.cache
+/phpstan-baseline.neon
+/.eslintcache
+
+# Local overrides
+/phpcs.xml
+/phpstan.neon
+/phpunit.xml
+/.env
+/.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+/.idea/
+/.vscode/
+*.swp

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Integration suite.
+
+    Separate from phpunit.xml.dist because it needs a real WordPress, and
+    the unit bootstrap fakes the constants that WordPress must define for
+    itself. Point HIVECLERK_WP_ROOT at an installation, or leave it unset
+    and let the runner walk up from the plugin directory.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap-integration.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache/integration"
+         failOnRisky="true"
+         failOnWarning="false"
+         beStrictAboutOutputDuringTests="false">
+
+    <testsuites>
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+</phpunit>

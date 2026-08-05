@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<ruleset name="Hiveclerk">
+    <description>Coding standards for Hiveclerk.</description>
+
+    <file>src</file>
+    <file>tests</file>
+    <file>hiveclerk.php</file>
+    <file>uninstall.php</file>
+
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/assets/*</exclude-pattern>
+    <exclude-pattern>*/tools/phpstan/*</exclude-pattern>
+
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="parallel" value="8"/>
+    <arg name="extensions" value="php"/>
+    <arg value="ps"/>
+
+    <config name="minimum_wp_version" value="6.6"/>
+    <config name="testVersion" value="8.3-"/>
+
+    <rule ref="WordPress-Core">
+        <!-- The SPA owns navigation; filenames follow PSR-4, not WP's
+             class-file convention, because Composer autoloading requires it. -->
+        <exclude name="WordPress.Files.FileName"/>
+        <!-- PSR-4 + strict types means short array syntax and modern
+             formatting are appropriate here. -->
+        <exclude name="Generic.Arrays.DisallowShortArraySyntax"/>
+    </rule>
+
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <properties>
+            <property name="prefixes" type="array">
+                <element value="hiveclerk"/>
+                <element value="HIVECLERK"/>
+            </property>
+        </properties>
+        <!-- The test bootstrap defines WordPress constants such as ABSPATH
+             so units can run without loading WordPress. -->
+        <exclude-pattern>tests/bootstrap.php</exclude-pattern>
+        <!-- The integration base class defines WP_USE_THEMES, which is
+             WordPress core's own constant. wp-load.php reads it to decide it
+             is not serving a web request, so it cannot carry our prefix. -->
+        <exclude-pattern>tests/Integration/*</exclude-pattern>
+    </rule>
+
+    <!-- Hooks are namespaced with slashes: hiveclerk/lead/captured. This is
+         the convention committed to in the API specification. It groups hooks
+         by module, reads unambiguously in documentation, and cannot collide
+         with the underscore-separated names core and other plugins use. -->
+    <rule ref="WordPress.NamingConventions.ValidHookName">
+        <exclude-pattern>src/*</exclude-pattern>
+    </rule>
+
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="hiveclerk"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!-- Method names are camelCase to match PSR-12 and the interfaces in
+         the architecture documents. -->
+    <rule ref="WordPress.NamingConventions.ValidFunctionName">
+        <exclude-pattern>src/*</exclude-pattern>
+    </rule>
+
+    <!-- Domain objects expose camelCase properties to match PSR-12 and the
+         interfaces in the architecture documents. Tests read those same
+         properties, so the exclusion has to cover both. -->
+    <rule ref="WordPress.NamingConventions.ValidVariableName">
+        <exclude-pattern>src/*</exclude-pattern>
+        <exclude-pattern>tests/*</exclude-pattern>
+        <exclude-pattern>tools/*</exclude-pattern>
+    </rule>
+</ruleset>

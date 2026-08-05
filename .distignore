@@ -1,0 +1,34 @@
+# Everything excluded from the release ZIP.
+#
+# The built assets in /assets are kept: WordPress.org distributes source
+# ZIPs with no build step, so the compiled SPA must ship inside them.
+# The SPA and widget *sources* do not need to.
+
+/.git
+/.github
+/.gitignore
+/.distignore
+/node_modules
+/admin-app
+/public-widget
+/tests
+/tools
+/docs
+/.phpunit.cache
+/.phpunit.result.cache
+/.eslintcache
+/.vscode
+/.idea
+/.DS_Store
+
+composer.json
+composer.lock
+package.json
+package-lock.json
+vite.config.ts
+tsconfig.json
+eslint.config.js
+phpunit.xml.dist
+phpstan.neon.dist
+phpcs.xml.dist
+CHANGELOG.md

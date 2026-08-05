@@ -1,0 +1,174 @@
+<?php
+/**
+ * Plugin entry point.
+ *
+ * @package Hiveclerk
+ */
+
+declare( strict_types=1 );
+
+namespace Hiveclerk;
+
+use Hiveclerk\Api\RestServer;
+use Hiveclerk\Core\Container\Container;
+use Hiveclerk\Core\Container\Providers\AiServiceProvider;
+use Hiveclerk\Core\Container\Providers\ApiServiceProvider;
+use Hiveclerk\Core\Container\Providers\CoreServiceProvider;
+use Hiveclerk\Core\Container\Providers\DatabaseServiceProvider;
+use Hiveclerk\Core\Module\ModuleRegistry;
+use Hiveclerk\Core\Queue\JobRegistry;
+use Hiveclerk\Database\Migrator;
+
+/**
+ * Wires the container, registers modules and boots the plugin.
+ */
+final class Plugin {
+
+	/**
+	 * Singleton instance.
+	 *
+	 * @var self|null
+	 */
+	private static ?self $instance = null;
+
+	/**
+	 * Container.
+	 *
+	 * @var Container
+	 */
+	private Container $container;
+
+	/**
+	 * Whether boot() has run.
+	 *
+	 * @var bool
+	 */
+	private bool $booted = false;
+
+	/**
+	 * Private: use instance().
+	 */
+	private function __construct() {
+		$this->container = new Container();
+	}
+
+	/**
+	 * Shared instance.
+	 *
+	 * @return self
+	 */
+	public static function instance(): self {
+		if ( null === self::$instance ) {
+			self::$instance = new self();
+		}
+
+		return self::$instance;
+	}
+
+	/**
+	 * Container, for tests and third-party extensions.
+	 *
+	 * @return Container
+	 */
+	public function container(): Container {
+		return $this->container;
+	}
+
+	/**
+	 * Boot the plugin.
+	 *
+	 * @return void
+	 */
+	public function boot(): void {
+		if ( $this->booted ) {
+			return;
+		}
+
+		$this->container->register( new CoreServiceProvider() );
+		$this->container->register( new DatabaseServiceProvider() );
+		$this->container->register( new AiServiceProvider() );
+		$this->container->register( new ApiServiceProvider() );
+
+		$this->registerMigrationHook();
+
+		$this->container->get( RestServer::class )->boot();
+
+		$registry = $this->container->get( ModuleRegistry::class );
+
+		$registry->add( new Modules\KnowledgeBase\KnowledgeModule() );
+
+		/**
+		 * Register feature modules.
+		 *
+		 * Third-party code adds modules here. A module that reports itself
+		 * unavailable is skipped rather than fataling.
+		 *
+		 * @param ModuleRegistry $registry Module registry.
+		 * @param Container      $container Container.
+		 */
+		do_action( 'hiveclerk/modules/register', $registry, $this->container );
+
+		$registry->boot();
+
+		/*
+		 * Jobs bind after modules so a module can contribute one. Binding
+		 * happens on every request, including cron and REST: a job whose
+		 * hook has no listener is silently dropped by both queue drivers,
+		 * which looks exactly like work that never got scheduled.
+		 */
+		$jobs = $this->container->get( JobRegistry::class );
+
+		/**
+		 * Register background jobs.
+		 *
+		 * @param JobRegistry $jobs      Job registry.
+		 * @param Container   $container Container.
+		 */
+		do_action( 'hiveclerk/jobs/register', $jobs, $this->container );
+
+		$jobs->boot();
+
+		$this->container->get( Core\Admin\AdminPage::class )->boot();
+
+		$this->booted = true;
+
+		/**
+		 * Fires once the plugin is fully booted.
+		 *
+		 * @param Plugin $plugin Plugin instance.
+		 */
+		do_action( 'hiveclerk/booted', $this );
+	}
+
+	/**
+	 * Run pending migrations on the next admin request.
+	 *
+	 * Deliberately not run during activation: activation has a short
+	 * execution budget, and a failure there leaves the plugin half-installed
+	 * with no way to report why. On admin_init there is a request to report
+	 * into and a next request to retry from.
+	 *
+	 * @return void
+	 */
+	private function registerMigrationHook(): void {
+		add_action(
+			'admin_init',
+			function (): void {
+				$migrator = $this->container->get( Migrator::class );
+
+				if ( $migrator->needsMigration() ) {
+					$migrator->migrate();
+				}
+			},
+			5
+		);
+	}
+
+	/**
+	 * Prevent cloning.
+	 *
+	 * @return void
+	 */
+	private function __clone() {
+	}
+}
