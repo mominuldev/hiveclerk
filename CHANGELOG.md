@@ -108,11 +108,41 @@ run and would call all three fine — **it reads the schedule, which is
 exactly the thing that stays healthy in this failure.** A retention policy
 that quietly does nothing is a GDPR commitment that quietly is not kept.
 
-The screen needs to compare a *last actually ran* timestamp against the
-schedule, not report the schedule. A job whose next run keeps advancing
-while its last run is days old is the precise signature of this, and of
-several other cron failures the product currently cannot distinguish from
-health. Not built yet.
+#### Fixed: the status screen now reports what ran, not what is booked
+
+`Core\Queue\JobHeartbeat` records a timestamp every time a job actually
+executes, written in `JobRegistry::run()` — the single choke point both
+queue drivers funnel through. `/system/health` reports `last_run` beside
+`next_run` and counts `stalled` separately from `overdue`, because they are
+different faults: overdue means cron is not firing, stalled means it is
+firing and we are not there to answer.
+
+Recorded *before* the work rather than after, so a job that fatals on memory
+or the execution limit still leaves evidence it was reached. A run that
+throws is recorded again with `failed_at` set, keeping "reachable and
+broken" apart from "nothing is calling it" — collapsing them would hide the
+second behind the first, and they have opposite fixes.
+
+Staleness is two intervals plus an hour. One interval is far too tight: WP-
+Cron fires on traffic, so a five-minute job on a site nobody visited for ten
+minutes is late without anything being wrong. A hook with no record at all
+is stale only once its interval has had time to elapse since installation,
+so a freshly activated site does not show three red rows before its first
+tick.
+
+Reproduced against the endpoint, simulating the measured Hostinger state —
+scheduled for thirty days, never once answered:
+
+    scheduled=4 overdue=0 stalled=3
+      hiveclerk/jobs/sequence_tick        last=never  stalled=YES
+      hiveclerk/jobs/analytics_rollup     last=never  stalled=YES
+      hiveclerk/jobs/sync_lead            last=never  stalled=no
+      hiveclerk/job/purge_conversations   last=never  stalled=YES
+
+`overdue=0` is the whole point: the schedule is immaculate, which is what
+the screen used to report. `sync_lead` is correctly not flagged — it is a
+one-off with no cadence to be late against. After running the jobs for real,
+all four carry a timestamp and `stalled` returns to zero.
 
 #### Not delivered
 

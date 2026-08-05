@@ -76,9 +76,21 @@ final class JobRegistry {
 	 * @return void
 	 */
 	private function run( JobInterface $job, string $hook, array $args ): void {
+		/*
+		 * Recorded before the work, not after. A job that fatals — exhausts
+		 * memory, hits the execution limit — never reaches a line after
+		 * `handle()`, and those are exactly the jobs an operator most needs
+		 * to see evidence of. Recording the attempt means the status screen
+		 * can say "it is being called and it is dying", which is a different
+		 * and much more actionable answer than "nothing is calling it".
+		 */
+		JobHeartbeat::record( $hook, time() );
+
 		try {
 			$job->handle( $args );
 		} catch ( Throwable $e ) {
+			JobHeartbeat::record( $hook, time(), true );
+
 			// Logged rather than rethrown. Action Scheduler would mark the
 			// action failed and stop retrying, which is the right outcome
 			// for a job whose arguments are permanently unusable; on

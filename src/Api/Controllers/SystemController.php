@@ -12,6 +12,7 @@ namespace Hiveclerk\Api\Controllers;
 use Hiveclerk\Api\AbstractController;
 use Hiveclerk\Api\Response\ApiResponse;
 use Hiveclerk\Core\Capabilities\Capabilities;
+use Hiveclerk\Core\Queue\JobHeartbeat;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Core\Support\ClockInterface;
 use Hiveclerk\Ai\KeyResolver;
@@ -220,9 +221,12 @@ final class SystemController extends AbstractController {
 	 * @return array<string, mixed>
 	 */
 	private function cron(): array {
-		$now     = $this->clock->now()->getTimestamp();
-		$events  = array();
-		$overdue = 0;
+		$now       = $this->clock->now()->getTimestamp();
+		$events    = array();
+		$overdue   = 0;
+		$stalled   = 0;
+		$installed = (int) strtotime( (string) get_option( 'hiveclerk_installed_at', '' ) );
+		$intervals = $this->intervals();
 
 		foreach ( Footprint::scheduledHooks() as $hook => $next ) {
 			/*
@@ -237,18 +241,82 @@ final class SystemController extends AbstractController {
 				++$overdue;
 			}
 
+			/*
+			 * The important one, and the reason this method was rewritten.
+			 * A scheduled event reschedules itself whether or not anything
+			 * answered it, so `next_run` advancing proves only that
+			 * WordPress can do arithmetic. On a host whose cron runs a PHP
+			 * this plugin refuses to boot on — Hostinger ships different
+			 * versions for web and CLI — all three jobs fire into nothing
+			 * for ever while every row here looked healthy.
+			 */
+			$interval = $intervals[ $hook ] ?? 0;
+			$last     = JobHeartbeat::lastRun( $hook );
+			$stale    = JobHeartbeat::isStale( $hook, $interval, $now, $installed > 0 ? $installed : null );
+
+			if ( $stale ) {
+				++$stalled;
+			}
+
 			$events[] = array(
-				'hook'     => $hook,
-				'next_run' => gmdate( 'Y-m-d H:i:s', $next ),
-				'is_late'  => $late,
+				'hook'       => $hook,
+				'next_run'   => gmdate( 'Y-m-d H:i:s', $next ),
+				'is_late'    => $late,
+				'last_run'   => null !== $last ? gmdate( 'Y-m-d H:i:s', $last ) : null,
+				'is_stalled' => $stale,
 			);
 		}
 
 		return array(
 			'scheduled' => count( $events ),
 			'overdue'   => $overdue,
+			// Counted separately from `overdue` because they are different
+			// faults with different fixes. Overdue means cron is not firing;
+			// stalled means it is firing and we are not there to answer.
+			'stalled'   => $stalled,
 			'events'    => $events,
 		);
+	}
+
+	/**
+	 * How often each scheduled hook is supposed to run.
+	 *
+	 * Read from the cron array rather than from a list of our own, for the
+	 * same reason the hooks are: a list can describe a cadence the product
+	 * no longer has. A one-off event has no interval and is returned as
+	 * zero, which {@see JobHeartbeat::isStale()} treats as "nothing to
+	 * judge".
+	 *
+	 * @return array<string, int>
+	 */
+	private function intervals(): array {
+		$cron = _get_cron_array();
+
+		if ( ! is_array( $cron ) ) {
+			return array();
+		}
+
+		$intervals = array();
+
+		foreach ( $cron as $events ) {
+			if ( ! is_array( $events ) ) {
+				continue;
+			}
+
+			foreach ( $events as $hook => $instances ) {
+				if ( ! is_string( $hook ) || ! is_array( $instances ) ) {
+					continue;
+				}
+
+				foreach ( $instances as $instance ) {
+					if ( is_array( $instance ) && is_numeric( $instance['interval'] ?? null ) ) {
+						$intervals[ $hook ] = (int) $instance['interval'];
+					}
+				}
+			}
+		}
+
+		return $intervals;
 	}
 
 	/**

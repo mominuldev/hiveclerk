@@ -80,6 +80,14 @@ final class Footprint {
 			'hiveclerk_matrix_generation',
 
 			/*
+			 * When each background job last actually ran. Operational rather
+			 * than secret, but it is ours and an uninstall that left it
+			 * behind would hand a reinstalled plugin a set of timestamps
+			 * describing runs that happened before the tables existed.
+			 */
+			'hiveclerk_job_runs',
+
+			/*
 			 * Written by Activator before Sprint 9 and read by nothing
 			 * since: OnboardingState settled on `hiveclerk_onboarding`.
 			 * Kept in the list, and only in the list, so the row is
