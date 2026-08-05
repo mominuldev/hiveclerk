@@ -6,6 +6,87 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### R-2 host matrix — the first real host, and Hiveclerk does not run on it
+
+**Goal:** start the five-host compatibility matrix that has been "still one
+host" since Sprint 3 and blocking M2 since Sprint 5. Hostinger shared
+hosting, `us-bos-web1682.main-hosting.eu`, WordPress 7.0.2, a real account
+with 25 live domains on it.
+
+Two findings, both of which a customer would hit on day one.
+
+#### The plugin will not activate on the host's default PHP
+
+The account runs **PHP 8.2.30**; Hiveclerk requires 8.3. Activation was
+attempted for real and refused:
+
+    Failed to activate plugin. Current PHP version (8.2.30) does not meet
+    minimum requirements for Hiveclerk. The plugin requires PHP 8.3.
+
+That is the guard working exactly as NFR-06 asks — and it is the first time
+it has been exercised anywhere but a machine that already met the
+requirement. Verified afterwards that the refusal is clean: the plugin
+stayed `inactive`, **no tables were created**, and no plugin class was
+parsed, because `register_activation_hook()` checks requirements and
+`wp_die()`s before it reaches `vendor/autoload.php`. A version guard that
+half-installs is worse than none.
+
+`/opt/alt/` on the host carries php83, php84 and php85, so the requirement
+is satisfiable — the account is simply *set* to 8.2. But the default is
+what a customer meets, and on this host the default does not run the
+product.
+
+#### libsodium is absent, so licence verification silently does not happen
+
+The host's PHP 8.3 build reports `sodium` as not loaded. That is the
+extension `LicenceSignature` needs, and its absence is the case the class
+was written to survive: `verify()` checks `function_exists()` and returns
+true rather than failing closed, so entitlements are unaffected and the
+plugin falls back to trusting TLS alone.
+
+It is worth being blunt about what that means. **On this host, the Ed25519
+response signing shipped earlier today does nothing at all.** The control
+is present, correct, tested, and inert. Had it been written to fail closed,
+every Hostinger customer's licence check would have returned a verification
+failure — and if that had been reported as `invalid` rather than
+`unreachable`, every one of them would have been downgraded by an extension
+they have never heard of.
+
+`sodium.so` *is* shipped with the host's php83 and referenced in its
+`php.d/default.ini`; it is disabled for this account rather than missing.
+Loading it explicitly and round-tripping a signature confirms it works when
+enabled. So the guidance is "enable the sodium extension", not "change
+host" — but nothing in the product says so yet.
+
+#### Measured on the host
+
+| | |
+|---|---|
+| PHP (account default) | 8.2.30 — **below the 8.3 minimum** |
+| PHP available | 8.3.30, 8.4, 8.5 |
+| Activation on default PHP | refused cleanly, no tables, no partial install |
+| `openssl` | yes |
+| `sodium` | **not loaded** (shipped, disabled for the account) |
+| `mbstring` `intl` `curl` `dom` `zip` `fileinfo` `pdo_mysql` | yes |
+| `memory_limit` | 512M |
+| `output_buffering` (CLI) | off |
+| `zlib.output_compression` | off |
+
+The last two are the ones the SSE transport lives or dies by and they are
+encouraging, but they are the **CLI** values. What matters for streaming is
+the web SAPI's, and that has not been read yet.
+
+#### Not delivered
+
+- **Everything downstream of activation.** SSE streaming, the polling
+  fallback, first-token timing, the widget on a real page: all of it needs
+  the plugin running, which needs PHP 8.3 selected for the domain. That is
+  an hPanel change on an account carrying 25 live sites, and it is not a
+  change to make on somebody's production hosting without them present.
+- **Four of the five hosts.** SiteGround, Bluehost, GoDaddy and WP Engine
+  are untouched. M2's "4 of 5" criterion remains unmet, and one host — the
+  one the product currently fails to install on — is not a matrix.
+
 ### M1 measured at last — and its recall criterion fails
 
 **Goal:** close the oldest open question in the project. The M1 recall gate
