@@ -136,7 +136,20 @@ final class AdminPage {
 			'before'
 		);
 
-		wp_set_script_translations( 'hiveclerk-admin', 'hiveclerk', HIVECLERK_DIR . 'languages' );
+		/*
+		 * `wp_set_script_translations()` is deliberately not called here.
+		 *
+		 * It only does anything for a bundle that imports `@wordpress/i18n`,
+		 * and this one cannot: ESLint's `no-restricted-imports` fails the
+		 * build on any `@wordpress/*` package, which is a deliberate
+		 * architectural constraint (see CLAUDE.md §5) and not an oversight.
+		 * Calling it anyway added `wp-i18n` as a script dependency — so
+		 * every admin page load fetched a core bundle nothing used — while
+		 * advertising a translation path that does not exist. The admin SPA
+		 * is English-only in V1, and saying so is better than shipping the
+		 * appearance of translatability. The PHP surface is fully
+		 * translatable and is what `languages/hiveclerk.pot` covers.
+		 */
 	}
 
 	/**

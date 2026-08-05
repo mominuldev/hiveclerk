@@ -97,4 +97,17 @@ final class InMemoryVisitors implements VisitorRepositoryInterface {
 
 		return $updated;
 	}
+
+	public function deleteForLead( int $leadId ): int {
+		$before = count( $this->saved );
+
+		$this->saved = array_values(
+			array_filter(
+				$this->saved,
+				static fn ( Visitor $visitor ): bool => $visitor->leadId !== $leadId
+			)
+		);
+
+		return $before - count( $this->saved );
+	}
 }

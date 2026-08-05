@@ -18,6 +18,9 @@ use Hiveclerk\Domain\Agent\AgentStatus;
 use Hiveclerk\Domain\Lead\NullVisitorResolver;
 use Hiveclerk\Domain\Shared\Uuid;
 use Hiveclerk\Modules\Chat\Services\SessionService;
+use Hiveclerk\Core\Privacy\IpHasher;
+use Hiveclerk\Core\Privacy\PrivacySettings;
+use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Tests\Support\Chat\FrozenClock;
 use Hiveclerk\Tests\Support\Chat\InMemoryConversations;
 use Hiveclerk\Tests\Support\Chat\InMemorySessions;
@@ -77,7 +80,8 @@ final class SessionServiceTest extends TestCase {
 			$this->sessions,
 			new InMemoryConversations(),
 			$this->clock,
-			new NullVisitorResolver()
+			new NullVisitorResolver(),
+			new IpHasher( new PrivacySettings( new SettingsRepository(), $this->clock ) )
 		);
 	}
 

@@ -131,6 +131,39 @@ final class VisitorRepository extends AbstractRepository implements VisitorRepos
 		return $done ? (int) $this->db->rows_affected : 0;
 	}
 
+	public function deleteForLead( int $leadId ): int {
+		$table    = $this->tableName();
+		$sessions = Schema::table( Schema::SESSIONS );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$this->db->query( 'START TRANSACTION' );
+
+		/*
+		 * Sessions first. Each one holds a hashed token and a hashed IP
+		 * against a visitor id, so a session left behind is the erased
+		 * person's IP hash still on the site, filed under a row number
+		 * that no longer resolves to anything an operator could find.
+		 */
+		$done = $this->execute(
+			"DELETE s FROM `{$sessions}` s
+			 INNER JOIN `{$table}` v ON v.id = s.visitor_id
+			 WHERE v.lead_id = %d",
+			array( $leadId )
+		);
+
+		$deleted = 0;
+
+		if ( $done ) {
+			$done    = $this->execute( "DELETE FROM `{$table}` WHERE lead_id = %d", array( $leadId ) );
+			$deleted = $done ? (int) $this->db->rows_affected : 0;
+		}
+
+		$this->db->query( $done ? 'COMMIT' : 'ROLLBACK' );
+		// phpcs:enable
+
+		return $done ? $deleted : 0;
+	}
+
 
 	/**
 	 * Build a Visitor from a database row.

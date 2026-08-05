@@ -14,8 +14,11 @@ use Hiveclerk\Api\Response\ApiResponse;
 use Hiveclerk\Core\Capabilities\Capabilities;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Core\Support\ClockInterface;
+use Hiveclerk\Ai\KeyResolver;
+use Hiveclerk\Core\Activation\Footprint;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Database\Migrator;
+use Hiveclerk\Database\ServerInfo;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
@@ -41,6 +44,8 @@ final class SystemController extends AbstractController {
 	 * @param ConversationRepositoryInterface    $conversations Conversations.
 	 * @param KnowledgeSourceRepositoryInterface $sources       Knowledge sources.
 	 * @param QueueInterface                     $queue         Background queue.
+	 * @param ServerInfo                         $server        Database server.
+	 * @param KeyResolver                        $keys          Provider credentials.
 	 */
 	public function __construct(
 		private readonly Migrator $migrator,
@@ -49,7 +54,9 @@ final class SystemController extends AbstractController {
 		private readonly AgentRepositoryInterface $agents,
 		private readonly ConversationRepositoryInterface $conversations,
 		private readonly KnowledgeSourceRepositoryInterface $sources,
-		private readonly QueueInterface $queue
+		private readonly QueueInterface $queue,
+		private readonly ServerInfo $server,
+		private readonly KeyResolver $keys
 	) {
 	}
 
@@ -151,6 +158,12 @@ final class SystemController extends AbstractController {
 					'multisite'     => is_multisite(),
 					'cron_disabled' => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
 				),
+				'mysql'        => array(
+					'version'   => $this->server->version(),
+					'mariadb'   => $this->server->isMariaDb(),
+					'charset'   => $this->server->charset(),
+					'collation' => $this->server->collation(),
+				),
 				'database'     => array(
 					'version'        => $this->migrator->currentVersion(),
 					'latest'         => $this->migrator->latestVersion(),
@@ -169,8 +182,16 @@ final class SystemController extends AbstractController {
 					'driver' => $this->queue->driver(),
 					'depth'  => $this->queue->depth(),
 				),
+				'cron'         => $this->cron(),
+				'providers'    => $this->providers(),
 				'object_cache' => array(
-					'persistent' => wp_using_ext_object_cache(),
+					/*
+					 * Cast, because the global this reads is null until
+					 * something sets it and the raw value serialises to
+					 * JSON null — which a screen would render as neither
+					 * yes nor no.
+					 */
+					'persistent' => (bool) wp_using_ext_object_cache(),
 					// Without a persistent cache the retrieval matrix falls back
 					// to transients, which is slower but still correct.
 					'note'       => wp_using_ext_object_cache()
@@ -179,6 +200,88 @@ final class SystemController extends AbstractController {
 				),
 			)
 		);
+	}
+
+	/**
+	 * Every recurring job, and whether it is running when it should.
+	 *
+	 * A queue depth answers "is there work waiting". It does not answer
+	 * the question operators actually arrive with, which is "why has
+	 * nothing happened since Tuesday" — and the usual cause is a cron
+	 * that stopped firing, which shows up as a scheduled time in the past
+	 * rather than as anything erroring.
+	 *
+	 * Hooks are read from the schedule rather than from a list, so this
+	 * cannot describe a job the product no longer has or miss one it
+	 * gained. Nothing scheduled at all is reported as exactly that, and
+	 * it is the most serious state here: it means either that no module
+	 * has booted or that something unscheduled our work.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function cron(): array {
+		$now     = $this->clock->now()->getTimestamp();
+		$events  = array();
+		$overdue = 0;
+
+		foreach ( Footprint::scheduledHooks() as $hook => $next ) {
+			/*
+			 * An hour's grace. WP-Cron fires on traffic, so a quiet site
+			 * legitimately runs a five-minute job late, and a screen that
+			 * called that "overdue" would cry wolf on every low-traffic
+			 * install — which is most of them.
+			 */
+			$late = $next < ( $now - HOUR_IN_SECONDS );
+
+			if ( $late ) {
+				++$overdue;
+			}
+
+			$events[] = array(
+				'hook'     => $hook,
+				'next_run' => gmdate( 'Y-m-d H:i:s', $next ),
+				'is_late'  => $late,
+			);
+		}
+
+		return array(
+			'scheduled' => count( $events ),
+			'overdue'   => $overdue,
+			'events'    => $events,
+		);
+	}
+
+	/**
+	 * Which model providers are configured, and when each last answered.
+	 *
+	 * Reported from what was stored at the last verification rather than
+	 * probed live. A status screen that opened a connection to every
+	 * configured provider on every load would put three third-party
+	 * latencies inside a page an operator refreshes while debugging, and
+	 * bill them for the privilege on any provider that charges for a
+	 * model list. Re-checking is a button on the providers screen, where
+	 * the person pressing it knows they are making a request.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function providers(): array {
+		$providers = array();
+
+		foreach ( $this->keys->configured() as $provider ) {
+			$described = $this->keys->describe( $provider );
+
+			$providers[] = array(
+				'provider'    => $provider,
+				'from_config' => $described['from_config'],
+				'model'       => $described['model'],
+				// Empty means a key is stored that has never successfully
+				// listed a model, which is a different and more urgent
+				// state than "verified a while ago".
+				'verified_at' => $described['verified_at'],
+			);
+		}
+
+		return $providers;
 	}
 
 	/**

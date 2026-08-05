@@ -6,6 +6,332 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Sprint 10 — Harden, secure, beta (partial)
+
+**Goal:** M4. No new features. This entry covers the part of Sprint 10
+that was delivered; the workstreams that were not are named in full below,
+because a hardening sprint reported as complete when it is not is worse
+than one reported as half done.
+
+#### Fixed
+
+- **A "full uninstall" left the customer's encrypted API keys on their
+  site.** `uninstall.php` kept its own hand-copied list of options, and by
+  this sprint it was wrong in five places. It deleted
+  `hiveclerk_licence`, which has never existed under that name, and
+  omitted `hiveclerk_provider_keys`, `hiveclerk_licence_key`,
+  `hiveclerk_licence_state`, `hiveclerk_session_salt`,
+  `hiveclerk_matrix_generation` and `hiveclerk_onboarding`. The first of
+  those holds the model API keys. It also deleted
+  `hiveclerk_encryption_salt` — the value those keys are encrypted
+  against — so a site that ticked *delete everything* was left with an
+  undecryptable blob of its own credentials, permanently, on an install
+  that believed the plugin was gone. Nothing could have caught this by
+  testing behaviour, because no behaviour was wrong: the list had simply
+  stopped describing the codebase around it. Both lists are now derived
+  — tables from `Schema::all()`, options from `Footprint::options()` —
+  and `FootprintTest` reads `src/` and fails on drift in either
+  direction.
+- **Deactivating the plugin left three recurring jobs running for ever.**
+  `Deactivator` cleared `hiveclerk_daily_maintenance` and
+  `hiveclerk_hourly_rollup`, two hooks that appear nowhere else in the
+  codebase and have never been scheduled. The three that are —
+  `hiveclerk/jobs/sequence_tick` every five minutes,
+  `hiveclerk/jobs/analytics_rollup` hourly and
+  `hiveclerk/job/purge_conversations` daily — survived deactivation and
+  kept firing at hooks with no listener. Nothing errors in that state,
+  which is why it lasted: WP-Cron fires the action, no callback is
+  registered, and the event reschedules itself. Now swept by prefix, so
+  the sweep cannot describe a job the product no longer has or miss one
+  it gained.
+- **Transients survived an opted-in uninstall.** On a site with no
+  persistent object cache they are rows in the options table, and the
+  model catalogue alone measured 113 KB on the development site. Removed
+  by pattern, with `esc_like()` guarding the underscore — an unescaped
+  `hiveclerk_%` also matches `hiveclerkXfoo`, and a DELETE that matches
+  more than it meant to is the worst possible bug in an uninstall
+  routine. Our two object-cache groups go too, and only ours:
+  `wp_cache_flush()` would have emptied every other plugin's entries on
+  the site as a side effect of removing this one.
+- **`Activator` wrote an option nothing has read since Sprint 9.** It
+  seeded `hiveclerk_onboarding_state`; `OnboardingState` owns
+  `hiveclerk_onboarding` and treats a missing option as "not started",
+  which is the right reading of a site that has just installed the
+  plugin. The write is gone and the orphan is in the uninstall list, so
+  the installs already carrying it get cleaned up.
+- **The cron health check reported every healthy job as never
+  scheduled.** Found while building the status screen, in code written
+  the same day. `wp_next_scheduled( $hook )` looks an event up by a hash
+  of its arguments, and every recurring job here is registered through
+  `CronQueue`, which wraps its argument array — so the stored signature
+  is `md5( serialize( array( array() ) ) )` and the one the function
+  computes is `md5( serialize( array() ) )`. It returned false for all
+  three jobs on a site where all three were scheduled and running, which
+  is the exact false alarm the screen exists to avoid. Timestamps now
+  come out of the cron array itself, which is signature-agnostic.
+- **`wp_using_ext_object_cache()` reached the API as JSON `null`.** The
+  global it reads is null until something sets it, and a screen cannot
+  render that as either yes or no.
+
+#### Added
+
+- **GDPR export and erasure through WordPress's own tools**
+  (FR-SYS-04). `PersonalDataExporter` and `PersonalDataEraser` register
+  on `wp_privacy_personal_data_exporters` and `..._erasers`, so a site
+  owner facing a subject access request works through Tools → Export
+  Personal Data and gets an answer that includes this plugin. An export
+  that covers every plugin except this one is worse than useless: it is
+  a document the site owner signs off as complete while it is not.
+- **`Core\Activation\Footprint`** — one description of everything an
+  install leaves outside its own tables: options, transient prefixes,
+  cache groups and the hook prefix the schedule is swept by.
+- **The privacy settings screen** (D11 §11), carried from Sprint 9.
+  Retention with the count of what the next run would delete, hashed-IP
+  storage, the consent gate and its wording, and the uninstall opt-in.
+- **A consent gate in the widget.** With it on, the widget makes no
+  request at all until the visitor accepts — not even the page-view ping
+  every other install sends on load. It replaces the transcript and the
+  composer rather than sitting above them, because a notice a visitor
+  can type past is a notice they did not give; and declining closes the
+  panel and says nothing was recorded, which is true.
+- **The system status page** (FR-SYS-07), over an extended
+  `/system/health`: PHP, MySQL/MariaDB version and collation, WordPress,
+  schema version, table presence, queue driver and depth, every
+  scheduled job with its next run, and each configured provider's last
+  successful check.
+- **`Core\Privacy\IpHasher`**, promoted from two identical private
+  methods in `VisitorService` and `SessionService`. Two copies of a
+  privacy control is one that honours the site's setting and one that
+  quietly does not.
+- **Route-level error boundaries.** Sprint 9 shipped a badge that read a
+  property off `undefined` and unmounted the entire React tree, so the
+  symptom was a white screen on every route rather than a broken badge
+  on one. Typing fixed that instance; this exists because typing cannot
+  fix the next one. `tools/boundary-probe.mjs` reproduces the failure
+  against the built bundle and asserts the app survives it.
+- **`POST /admin/leads/{uuid}/sync`** (FR-CRM-09), carried from Sprints
+  7, 8 and 9. `SyncService::push()` has existed since Sprint 8 with no
+  caller.
+- **`languages/hiveclerk.pot`** — 268 strings — and
+  `load_plugin_textdomain()` on `init`.
+- **`readme.txt` external-services disclosure**, naming every model
+  provider, every connector and the licence server, with what is sent
+  and when. Required for a WordPress.org submission since 2024 and
+  absent until now.
+
+#### Security
+
+- **The erasure removes the transcript, not just the link to it.**
+  `LeadRepository::delete()` sets `lead_id = NULL` on conversations and
+  visitors, which is right for an operator removing a record from their
+  pipeline and wrong for a person asking to be forgotten: it would leave
+  every word they typed on the site, orphaned from any name and
+  therefore unreachable through the admin. Unreachable is not erased.
+  Conversations, visitors and sessions are removed explicitly and
+  *before* the lead, because once the lead row is gone the foreign keys
+  that identify them are gone with it.
+- **The suppression list survives an erasure, and the site owner is
+  told.** Somebody who unsubscribed and then asked to be forgotten would
+  be re-subscribed by the next import if their opt-out went with them —
+  the erasure causing the exact harm it was meant to prevent. What is
+  kept is a SHA-256 of the address and nothing else. WordPress's eraser
+  contract has `items_retained` and a message field for precisely this,
+  and both are used.
+- **Hashed IPs are acknowledged in an export, never disclosed.** A
+  SHA-256 digest tells the person asking nothing and hands anyone who
+  intercepts the emailed ZIP a stable identifier to match against other
+  data. The export says the site holds a hashed IP.
+- **The erasure is audited without recording what was erased.** A log
+  entry naming the address would defeat the erasure, so the count is
+  kept and the address is not.
+- **`anonymise_ip` was removed rather than implemented.** It had been a
+  default nothing read since it was written, and it described a choice
+  the product does not offer: an address is salted and hashed at the
+  point it is read and the original is never held, on every path,
+  unconditionally. A privacy control that does nothing is worse than
+  none — an operator answering a data-protection questionnaire reads the
+  checkbox, not the code. `store_ip_hash` replaces it with a real
+  choice, and rate limiting is unaffected either way because it derives
+  its own key from the live request and has never read the stored
+  column.
+- **`wp_set_script_translations()` was removed from the admin
+  enqueue.** It only does anything for a bundle importing
+  `@wordpress/i18n`, which ESLint forbids here by design. It was adding
+  `wp-i18n` as a script dependency — a core bundle fetched on every
+  admin page load and used by nothing — while advertising a translation
+  path that does not exist.
+- Both new routes are capability-gated and verified by
+  `tools/verify-routes.php`: **98/98**. Privacy settings want
+  `manage_settings`, because shortening retention deletes history
+  irreversibly and unattended. The lead sync wants
+  `manage_integrations` rather than `manage_leads`, because it sends a
+  person's contact details to a third party — a decision about where the
+  customer's data goes rather than one about the pipeline.
+
+#### Decisions worth recording
+
+- **The uninstall's hook sweep is by prefix; its option list is not.**
+  Hooks can be read back from the schedule, so the truth is available at
+  runtime and a list would only be a way to get it wrong. Options
+  cannot: nothing on a live site distinguishes ours from another
+  plugin's beyond the prefix, and a prefix DELETE across `wp_options` is
+  not a risk worth taking to avoid maintaining a list. So the list stays
+  and a test defends it.
+- **Cache groups are allowed to be best-effort; options are not.**
+  Every entry in both groups carries a TTL and is keyed by a generation
+  counter or an id, so anything missed expires on its own and can never
+  be read back by a later install. A missed option is permanent.
+- **`POST /admin/leads/{uuid}/sync` lives in the integrations module
+  despite its lead-shaped path.** Leads must not know connectors exist:
+  integrations listen to lead events and are never called by the module
+  that fires them, which is what lets a site filter the whole module out
+  and keep a working pipeline. Putting the handler on `LeadController`
+  would have turned that one-way arrow into a cycle for the sake of a
+  tidier filename.
+- **The manual sync queues and says so.** A CRM's API on a bad day is
+  slower than any request should be, and the retry ladder the job
+  already implements is the reason a failed sync eventually succeeds.
+  The response reports "queued", never "delivered".
+- **`PrivacySettings` owns the retention policy and `RetentionService`
+  delegates to it.** Both had the same clamp, and the REST server boots
+  before modules — so the controller could not have reached the module's
+  service anyway. One owner rather than two copies and a layering
+  workaround.
+- **The status page reports each provider's last successful check, not a
+  live probe.** Reaching every configured provider on each load would
+  put three third-party latencies inside a screen an operator refreshes
+  while debugging, and bill them for the model lists on any provider
+  that charges for one.
+- **Consent is remembered in localStorage, keyed by origin.** Re-asking
+  every page view makes the gate feel like a cookie banner that never
+  learns; keying it per clerk would ask the same question again because
+  a different clerk serves the pricing page.
+- **The status screen's yes/no flags carry no colour.** The design
+  system has no success token, and the right response was not to invent
+  a green: most rows there are neutral facts rather than passes, and a
+  tick in positive green beside "Multisite: Yes" would assert an
+  approval nobody meant.
+- **A second error boundary sits inside each tab shell.** The
+  shell-level one keeps the sidebar alive; this keeps the tab bar alive
+  too, so a broken sub-screen leaves the operator one click from a
+  working one instead of routing them back through the sidebar.
+- **Render errors go to the console and nowhere else.** This plugin's
+  promise is that the customer's data stays on their server, and a
+  render error carries whatever was being rendered — a lead's name, a
+  visitor's question — straight off it.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2, driven with
+`wp eval-file` and Playwright against the real site.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **538**, 2,077 assertions (22 new) |
+| Integration tests | 22, 70 assertions |
+| SEC-04 | **98/98 routes gated** |
+| Admin bundle | **178.97 KB** gzipped (budget 350; was 175.49) |
+| Widget bundle | **17.23 KB** gzipped (budget 40; was 16.74) |
+| POT | 268 strings |
+
+- **The uninstall was run for real, twice, against a restored
+  database.** With the opt-in off: 27 tables, 12 options, 6 transients
+  and 4 scheduled hooks all survived, which is the half that matters
+  most. With it on: every one of them went, along with all 7
+  capabilities. The fourth hook was a one-off `sync_lead` job left by
+  the manual-sync test, which is how the prefix sweep was shown to catch
+  ad-hoc jobs and not just the three recurring ones.
+- **The exporter was run against a real lead** through the actual
+  `wp_privacy_personal_data_exporters` filter: 9 items over one page —
+  the contact record, two visitor sessions, four timeline entries and
+  two full chat transcripts. An unknown address and a malformed one both
+  return zero items and `done: true`; a `false` there is an export
+  screen that never finishes.
+- **The eraser was run against the same lead**, with a suppression row
+  seeded first so the retention branch could not hide behind a pass. One
+  lead, 2 conversations, 17 messages, 2 visitors, 2 sessions, 4
+  activities and 3 score events removed; the suppression hash retained
+  and reported; a second run removed nothing and did not error.
+- **The error boundary was proved by breaking a screen on purpose.**
+  `tools/boundary-probe.mjs` serves `/system/health` a well-formed
+  envelope whose `cron` object has lost the array the screen maps over,
+  against the built bundle. The app stayed mounted, the boundary
+  rendered, and the sidebar and tab bar both survived.
+- **The cron signature bug was diagnosed against the live schedule**,
+  not reasoned about: the stored key and the computed key were printed
+  side by side and differed.
+- **Both themes were rendered** for the privacy and system screens.
+- **The manual sync was exercised end to end**: two connectors queued,
+  one skipped as unusable, 404 on an unknown lead, and a second press
+  queued nothing — pressing twice must not create two records in the
+  customer's CRM.
+
+#### Not delivered this sprint
+
+Sprint 10 was planned at 26 engineer-days against a 16-day capacity, and
+this is where that lands. Named individually rather than summarised:
+
+- **The accessibility audit (NFR-11).** The new screens were built to the
+  existing conventions — keyboard reachable, visible focus, no
+  colour-only signals, `role="alert"` on the boundary and `role="status"`
+  on the retention warning — but no audit was run across the product and
+  no assistive technology was used. The DoD box for the two new screens
+  is ticked by construction, not by measurement, and that is a weaker
+  claim.
+- **The performance pass against every NFR budget (NFR-01…05).** Only
+  the two bundle budgets were measured, because those are the two the
+  build measures for us. Time to first token, retrieval at 10k chunks,
+  admin REST p95 and peak memory were not re-measured this sprint.
+- **The E2E suite** (onboarding → publish → converse → lead → sync).
+  Each leg has been driven by hand at some point; none of it is
+  automated, so nothing would catch a break between two legs.
+- **The host-compatibility matrix (R-2).** Everything here was verified
+  on one stack. Shared hosting, no `openssl`, `DISABLE_WP_CRON`, a
+  persistent object cache and MariaDB are all paths the code reasons
+  about and none has been run.
+- **The beta with 20 design partners (M4).** Cannot be simulated, and it
+  is the exit criterion.
+- **The security review execution (D15).** The audit performed here was
+  of the install lifecycle, not the threat model. The prompt-injection
+  suite was re-run — 94 tests, 317 assertions, all passing — but it
+  predates this sprint and no new prompt surface was added, so nothing
+  in it was hardened. That line item is untouched.
+- **`Stable tag: 0.1.0` in `readme.txt` does not match `Version:
+  0.1.0-dev` in the plugin header.** Deliberately left: correcting it
+  would claim a release that has not happened. It is a submission
+  blocker to fix at release, recorded here so it is not discovered by
+  the reviewer.
+- **A settings screen for the widget-side consent copy per clerk.** The
+  gate is site-wide; per-clerk wording is not offered.
+
+#### Known gaps
+
+- **The GDPR exporter finds a person by email address and by nothing
+  else.** A visitor who chatted anonymously and never gave one has a
+  conversation on the site that no subject access request can reach,
+  because there is no identifier to look them up by. This is inherent to
+  a widget that deliberately holds nothing identifying, and it is worth
+  stating plainly rather than leaving to be discovered.
+- **The eraser's no-email branch is unverified against real data.**
+  There is no email-less lead in the fixtures, so the 422 refusal on the
+  manual sync path was proved by reading, not by running.
+- **`Footprint::options()` is defended by a test that reads source
+  text.** It matches two idioms — a constant whose name ends in `OPTION`,
+  and a literal passed to `*_option()`. An option name assembled at
+  runtime, or held in a constant named anything else, would slip past
+  both. The test fails loudly on the patterns the codebase actually
+  uses, and would not notice a new one.
+- **The consent gate has not been tested with a screen reader**, and it
+  is the one piece of UI in the product a visitor cannot get past.
+- **The uninstall verification ran on a site with 27 tables and modest
+  data.** How a `DROP TABLE` of a chunks table with hundreds of
+  thousands of rows behaves inside a single request is unmeasured.
+- **`landing-page/` fails ESLint** with 34 errors. It is untracked,
+  predates this sprint and is nobody's Sprint 10 work; the lint scope
+  was left alone rather than quietly widened to hide it.
+
+
 ### Sprint 9 — Analytics, onboarding, licensing
 
 **Goal:** prove value, reduce time-to-value, take money.

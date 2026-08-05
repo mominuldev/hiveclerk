@@ -12,6 +12,7 @@ namespace Hiveclerk\Modules\Integrations\Http;
 use Hiveclerk\Api\AbstractController;
 use Hiveclerk\Api\ErrorCode;
 use Hiveclerk\Api\Response\ApiResponse;
+use Hiveclerk\Core\Audit\AuditLogger;
 use Hiveclerk\Core\Capabilities\Capabilities;
 use Hiveclerk\Core\Licence\Feature;
 use Hiveclerk\Core\Licence\LicenceGate;
@@ -24,11 +25,14 @@ use Hiveclerk\Domain\Integration\SyncLogEntry;
 use Hiveclerk\Domain\Integration\SyncLogRepositoryInterface;
 use Hiveclerk\Domain\Integration\SyncStatus;
 use Hiveclerk\Domain\Lead\LeadCapture;
+use Hiveclerk\Domain\Lead\LeadRepositoryInterface;
 use Hiveclerk\Domain\Lead\QualificationQuestion;
+use Hiveclerk\Domain\Shared\Uuid;
 use Hiveclerk\Modules\Integrations\Services\ConnectorRegistry;
 use Hiveclerk\Modules\Integrations\Services\FieldMapper;
 use Hiveclerk\Modules\Integrations\Services\IntegrationService;
 use Hiveclerk\Modules\Integrations\Services\OAuthService;
+use Hiveclerk\Modules\Integrations\Services\SyncService;
 use Hiveclerk\Modules\Integrations\Services\WebhookDispatcher;
 use WP_Error;
 use WP_REST_Request;
@@ -58,6 +62,9 @@ final class IntegrationController extends AbstractController {
 	 * @param OAuthService                   $oauth        Redirect flow.
 	 * @param AgentRepositoryInterface       $agents       Clerks, for their question keys.
 	 * @param LicenceGate                    $licence      Tier entitlements.
+	 * @param LeadRepositoryInterface        $leads        Leads.
+	 * @param SyncService                    $sync         Outbound sync.
+	 * @param AuditLogger                    $audit        Audit trail.
 	 */
 	public function __construct(
 		private readonly IntegrationService $service,
@@ -67,7 +74,10 @@ final class IntegrationController extends AbstractController {
 		private readonly FieldMapper $mapper,
 		private readonly OAuthService $oauth,
 		private readonly AgentRepositoryInterface $agents,
-		private readonly LicenceGate $licence
+		private readonly LicenceGate $licence,
+		private readonly LeadRepositoryInterface $leads,
+		private readonly SyncService $sync,
+		private readonly AuditLogger $audit
 	) {
 	}
 
@@ -161,6 +171,33 @@ final class IntegrationController extends AbstractController {
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'test' ),
 				'permission_callback' => $manage,
+			)
+		);
+
+		/*
+		 * A lead-shaped path registered by the integrations module, which
+		 * looks misplaced and is not. Leads must not know that connectors
+		 * exist: integrations listen to lead events and are never called
+		 * by the module that fires them, which is what lets a site filter
+		 * this whole module out and keep a working pipeline. Putting this
+		 * handler on `LeadController` would have made `Leads` depend on
+		 * `SyncService` and turned that one-way arrow into a cycle for
+		 * the sake of a tidier filename.
+		 */
+		register_rest_route(
+			self::NAMESPACE,
+			'/admin/leads/(?P<uuid>[0-9a-f-]{36})/sync',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'syncLead' ),
+				'permission_callback' => $manage,
+				'args'                => array(
+					'provider' => array(
+						'type'              => 'string',
+						'required'          => false,
+						'sanitize_callback' => 'sanitize_key',
+					),
+				),
 			)
 		);
 
@@ -412,6 +449,112 @@ final class IntegrationController extends AbstractController {
 		return ApiResponse::ok(
 			array(
 				'integration' => $this->present( $connector, $this->service->disconnect( $integration ) ),
+			)
+		);
+	}
+
+	/**
+	 * Push one lead to its destinations now (FR-CRM-09).
+	 *
+	 * Carried from Sprint 7 and deferred three times. `SyncService::push()`
+	 * has existed since Sprint 8 with no caller: every sync until now was
+	 * triggered by an event, which leaves an operator looking at a lead
+	 * that failed to sync with nothing to press.
+	 *
+	 * The work is queued, never done inline. A CRM's API on a bad day is
+	 * slower than any request should be, and the retry ladder the job
+	 * already implements is the reason a failed sync eventually succeeds.
+	 * What comes back is therefore "accepted", not "delivered", and the
+	 * message says so rather than implying an outcome it cannot promise.
+	 *
+	 * `MANAGE_INTEGRATIONS` rather than `MANAGE_LEADS`: this sends a
+	 * person's contact details to a third party, which is a decision about
+	 * where the customer's data goes rather than one about the pipeline.
+	 *
+	 * @param WP_REST_Request<array<string, mixed>> $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function syncLead( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$uuid = (string) $request->get_param( 'uuid' );
+
+		$lead = Uuid::isValid( $uuid )
+			? $this->leads->findByUuid( new Uuid( $uuid ) )
+			: null;
+
+		if ( null === $lead ) {
+			return ApiResponse::error(
+				ErrorCode::NOT_FOUND,
+				__( 'No lead with that identifier.', 'hiveclerk' ),
+				404
+			);
+		}
+
+		$refusal = $this->licence->refusal( Feature::Crm );
+
+		if ( $refusal instanceof WP_Error ) {
+			return $refusal;
+		}
+
+		/*
+		 * A lead with no address cannot be sent anywhere: every connector
+		 * here identifies a contact by email. Refused at the boundary with
+		 * an explanation rather than queued into a job that would drop it
+		 * silently.
+		 */
+		if ( null === $lead->email ) {
+			return ApiResponse::error(
+				ErrorCode::VALIDATION_FAILED,
+				__( 'This lead has no email address, and every connector identifies a contact by one. Add an address first.', 'hiveclerk' ),
+				422
+			);
+		}
+
+		$requested = $request->get_param( 'provider' );
+		$requested = is_string( $requested ) && '' !== $requested ? $requested : null;
+
+		$queued  = array();
+		$skipped = array();
+
+		foreach ( $this->integrations->all() as $integration ) {
+			if ( null !== $requested && $integration->provider !== $requested ) {
+				continue;
+			}
+
+			/*
+			 * `isUsable()` rather than "is connected". A connection whose
+			 * token has expired is still in the list and can receive
+			 * nothing, and queueing to it produces a job that fails its
+			 * way through the whole retry ladder before telling anybody.
+			 */
+			if ( ! $integration->isUsable() || ! $this->sync->push( $integration, $lead ) ) {
+				// Either unusable, or already pending — pressing the
+				// button twice must not create two records in the
+				// customer's CRM.
+				$skipped[] = $integration->provider;
+
+				continue;
+			}
+
+			$queued[] = $integration->provider;
+		}
+
+		$this->audit->record(
+			'integration.lead_synced',
+			array(
+				'queued'  => $queued,
+				'skipped' => $skipped,
+			),
+			'lead',
+			$lead->id
+		);
+
+		return ApiResponse::ok(
+			array(
+				'queued'  => $queued,
+				'skipped' => $skipped,
+				'message' => array() === $queued
+					? __( 'Nothing to send. Either no connector is usable, or this lead is already queued.', 'hiveclerk' )
+					: __( 'Queued. The sync runs in the background and the log will show the outcome.', 'hiveclerk' ),
 			)
 		);
 	}

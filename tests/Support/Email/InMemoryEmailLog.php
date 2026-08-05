@@ -75,4 +75,28 @@ final class InMemoryEmailLog implements EmailLogRepositoryInterface {
 
 		return array();
 	}
+
+	public function forEmail( string $email, int $limit, int $offset = 0 ): array {
+		$matching = array_values(
+			array_filter(
+				$this->rows,
+				static fn ( EmailLogEntry $entry ): bool => $entry->toEmail === $email
+			)
+		);
+
+		return array_slice( array_reverse( $matching ), max( 0, $offset ), max( 1, $limit ) );
+	}
+
+	public function deleteForEmail( string $email ): int {
+		$before = count( $this->rows );
+
+		$this->rows = array_values(
+			array_filter(
+				$this->rows,
+				static fn ( EmailLogEntry $entry ): bool => $entry->toEmail !== $email
+			)
+		);
+
+		return $before - count( $this->rows );
+	}
 }

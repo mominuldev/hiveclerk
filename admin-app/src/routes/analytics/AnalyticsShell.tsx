@@ -1,5 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Download } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
 import { Button } from '@/components/ui/Button';
@@ -77,7 +78,14 @@ export function AnalyticsShell() {
           <Tabs items={TABS.map(({ label, to }) => ({ label, to }))} />
         </div>
 
+        {/* A second boundary, inside the tab bar rather than around it.
+          The shell-level one already keeps the sidebar alive; this keeps
+          the tabs alive too, so a broken sub-screen leaves the operator
+          one click from a working one instead of routing them back
+          through the sidebar. */}
+      <ErrorBoundary>
         <Outlet />
+      </ErrorBoundary>
       </div>
     </FiltersContext.Provider>
   );

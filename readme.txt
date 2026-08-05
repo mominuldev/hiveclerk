@@ -36,6 +36,45 @@ Every conversation records its token use and cost. Set a monthly budget per cler
 
 Conversations, leads and knowledge live in your site's database. Only the message text is sent to the model provider you chose. Export or erase any visitor's data with WordPress's built-in privacy tools.
 
+== External services ==
+
+Hiveclerk is self-hosted and stores everything in your own database. It does,
+however, talk to services you choose to connect. Each one is listed here with
+what is sent and when.
+
+**Model providers.** A clerk cannot answer without one, and you supply the key.
+When a visitor sends a message, the message text, the relevant extracts from
+your own indexed content, and the clerk's instructions are sent to the provider
+you configured so it can generate a reply. Indexing your content also sends
+that content to the provider to be embedded. No provider is contacted until you
+add a key for it.
+
+* Anthropic — https://www.anthropic.com/legal/consumer-terms · https://www.anthropic.com/legal/privacy
+* OpenAI — https://openai.com/policies/terms-of-use · https://openai.com/policies/privacy-policy
+* Google (Gemini) — https://ai.google.dev/gemini-api/terms · https://policies.google.com/privacy
+* Azure OpenAI — https://azure.microsoft.com/support/legal/ · https://privacy.microsoft.com/privacystatement
+* OpenRouter — https://openrouter.ai/terms · https://openrouter.ai/privacy
+
+**CRM and notification connectors.** Optional, and inactive until you connect
+one. When a lead qualifies, that lead's contact details and the answers they
+gave are sent to the destination you connected.
+
+* HubSpot — https://legal.hubspot.com/terms-of-service · https://legal.hubspot.com/privacy-policy
+* Slack — https://slack.com/terms-of-service · https://slack.com/trust/privacy/privacy-policy
+* Custom webhook — sends to whatever URL you enter, and nowhere else
+
+FluentCRM and Groundhogg are WordPress plugins running on your own site. Syncing
+to either sends nothing off your server.
+
+**Licence server (licence.hiveclerk.com).** Contacted when you activate or
+deactivate a licence key, and every twelve hours afterwards to confirm the key
+is still valid. It sends the key, your site URL and the plugin version. It is
+not contacted at all until a key is entered. Terms and privacy policy:
+https://hiveclerk.com/terms · https://hiveclerk.com/privacy
+
+Nothing else leaves your server. There is no analytics, no telemetry and no
+phone-home on install.
+
 == Frequently Asked Questions ==
 
 = Do I need an API key? =
@@ -48,7 +87,7 @@ Yes. Clerks can index your products and answer questions about them. Cart recove
 
 = Will it slow my site down? =
 
-The chat widget loads asynchronously and adds under 50 ms to LCP. It only loads on pages where a clerk is set to appear.
+The chat widget is 17 KB gzipped, loads asynchronously, and only loads on pages where a clerk is set to appear. Pages with no clerk assigned load nothing at all.
 
 = Can I use it on client sites? =
 
@@ -63,8 +102,11 @@ Yes. The Agency licence covers 25 sites and includes white-label mode.
 
 == Changelog ==
 
+The full engineering changelog, including what was not delivered in each
+sprint and what remains untested, is in CHANGELOG.md in the plugin folder.
+
 = 0.1.0 =
-* Initial development release. Plugin scaffold, dependency container, module system, capabilities and admin shell.
+* Not yet released. Development builds only; see CHANGELOG.md.
 
 == Upgrade Notice ==
 

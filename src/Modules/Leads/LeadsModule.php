@@ -18,6 +18,7 @@ use Hiveclerk\Core\Module\AbstractModule;
 use Hiveclerk\Core\Queue\JobRegistry;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Core\Settings\SettingsRepository;
+use Hiveclerk\Core\Privacy\IpHasher;
 use Hiveclerk\Core\Support\ClockInterface;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Domain\Agent\Agent;
@@ -102,7 +103,8 @@ final class LeadsModule extends AbstractModule {
 			static fn ( Container $c ): VisitorService => new VisitorService(
 				$c->get( VisitorRepositoryInterface::class ),
 				$c->get( ActivityRepositoryInterface::class ),
-				$c->get( ClockInterface::class )
+				$c->get( ClockInterface::class ),
+				$c->get( IpHasher::class )
 			)
 		);
 

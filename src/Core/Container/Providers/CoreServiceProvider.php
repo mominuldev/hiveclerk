@@ -22,6 +22,17 @@ use Hiveclerk\Core\Container\Container;
 use Hiveclerk\Core\Container\ServiceProvider;
 use Hiveclerk\Core\Events\EventBus;
 use Hiveclerk\Core\Module\ModuleRegistry;
+use Hiveclerk\Core\Privacy\IpHasher;
+use Hiveclerk\Core\Privacy\PersonalDataEraser;
+use Hiveclerk\Core\Privacy\PersonalDataExporter;
+use Hiveclerk\Core\Privacy\PrivacySettings;
+use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
+use Hiveclerk\Domain\Conversation\MessageRepositoryInterface;
+use Hiveclerk\Domain\Email\EmailLogRepositoryInterface;
+use Hiveclerk\Domain\Email\SuppressionRepositoryInterface;
+use Hiveclerk\Domain\Lead\ActivityRepositoryInterface;
+use Hiveclerk\Domain\Lead\LeadRepositoryInterface;
+use Hiveclerk\Domain\Lead\VisitorRepositoryInterface;
 use Hiveclerk\Core\Licence\LicenceService;
 use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Support\ClockInterface;
@@ -122,6 +133,51 @@ final class CoreServiceProvider extends ServiceProvider {
 			static fn (): AssetManifest => new AssetManifest(
 				HIVECLERK_DIR . 'assets/admin/',
 				HIVECLERK_URL . 'assets/admin/'
+			)
+		);
+
+		$container->singleton(
+			PrivacySettings::class,
+			static fn ( Container $c ): PrivacySettings => new PrivacySettings(
+				$c->get( SettingsRepository::class ),
+				$c->get( ClockInterface::class )
+			)
+		);
+
+		$container->singleton(
+			IpHasher::class,
+			static fn ( Container $c ): IpHasher => new IpHasher(
+				$c->get( PrivacySettings::class )
+			)
+		);
+
+		/*
+		 * The privacy tools resolve nine repositories between them and are
+		 * used on exactly two admin requests in a site's lifetime. Bound
+		 * lazily like everything else, so the cost is a closure until
+		 * WordPress actually runs a subject access request.
+		 */
+		$container->singleton(
+			PersonalDataExporter::class,
+			static fn ( Container $c ): PersonalDataExporter => new PersonalDataExporter(
+				$c->get( LeadRepositoryInterface::class ),
+				$c->get( ConversationRepositoryInterface::class ),
+				$c->get( MessageRepositoryInterface::class ),
+				$c->get( VisitorRepositoryInterface::class ),
+				$c->get( ActivityRepositoryInterface::class ),
+				$c->get( EmailLogRepositoryInterface::class )
+			)
+		);
+
+		$container->singleton(
+			PersonalDataEraser::class,
+			static fn ( Container $c ): PersonalDataEraser => new PersonalDataEraser(
+				$c->get( LeadRepositoryInterface::class ),
+				$c->get( ConversationRepositoryInterface::class ),
+				$c->get( VisitorRepositoryInterface::class ),
+				$c->get( EmailLogRepositoryInterface::class ),
+				$c->get( SuppressionRepositoryInterface::class ),
+				$c->get( AuditLogger::class )
 			)
 		);
 

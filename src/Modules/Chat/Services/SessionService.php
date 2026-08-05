@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace Hiveclerk\Modules\Chat\Services;
 
 use DateTimeImmutable;
+use Hiveclerk\Core\Privacy\IpHasher;
 use Hiveclerk\Core\Support\ClockInterface;
 use Hiveclerk\Domain\Agent\Agent;
 use Hiveclerk\Domain\Conversation\Conversation;
@@ -78,12 +79,14 @@ final class SessionService {
 	 * @param ConversationRepositoryInterface $conversations Conversation storage.
 	 * @param ClockInterface                  $clock         Time source.
 	 * @param VisitorResolverInterface        $visitors      Who is typing, when that is knowable.
+	 * @param IpHasher                        $ipHasher      Address hashing, honouring the site's privacy setting.
 	 */
 	public function __construct(
 		private readonly SessionRepositoryInterface $sessions,
 		private readonly ConversationRepositoryInterface $conversations,
 		private readonly ClockInterface $clock,
-		private readonly VisitorResolverInterface $visitors
+		private readonly VisitorResolverInterface $visitors,
+		private readonly IpHasher $ipHasher
 	) {
 	}
 
@@ -129,7 +132,7 @@ final class SessionService {
 				conversationId: $conversation->id,
 				visitorId: $visitor?->id,
 				transport: 'sse',
-				ipHash: $this->hashedIp(),
+				ipHash: $this->ipHasher->hash(),
 				expiresAt: $expires,
 			)
 		);
@@ -336,32 +339,6 @@ final class SessionService {
 		$decoded = base64_decode( strtr( $value, '-_', '+/' ), true );
 
 		return false === $decoded ? '' : $decoded;
-	}
-
-	/**
-	 * A salted hash of the caller's IP.
-	 *
-	 * Stored rather than the address itself. No product feature needs the
-	 * original, and holding one creates a GDPR obligation for no benefit.
-	 *
-	 * @return string|null
-	 */
-	private function hashedIp(): ?string {
-		$remote = $_SERVER['REMOTE_ADDR'] ?? null; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotValidated
-
-		if ( ! is_string( $remote ) ) {
-			return null;
-		}
-
-		$ip = filter_var( wp_unslash( $remote ), FILTER_VALIDATE_IP );
-
-		if ( ! is_string( $ip ) ) {
-			return null;
-		}
-
-		$salt = defined( 'AUTH_SALT' ) ? (string) AUTH_SALT : '';
-
-		return hash( 'sha256', $salt . '|' . $ip );
 	}
 
 	/**

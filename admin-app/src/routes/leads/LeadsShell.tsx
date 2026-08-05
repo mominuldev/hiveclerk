@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Columns3, SlidersHorizontal, Table2 } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
 
@@ -40,7 +41,14 @@ export function LeadsShell() {
         />
       </div>
 
-      <Outlet />
+      {/* A second boundary, inside the tab bar rather than around it.
+          The shell-level one already keeps the sidebar alive; this keeps
+          the tabs alive too, so a broken sub-screen leaves the operator
+          one click from a working one instead of routing them back
+          through the sidebar. */}
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
     </div>
   );
 }

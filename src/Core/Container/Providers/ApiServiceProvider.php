@@ -13,6 +13,7 @@ use Hiveclerk\Ai\AiService;
 use Hiveclerk\Ai\KeyResolver;
 use Hiveclerk\Api\Controllers\AuditController;
 use Hiveclerk\Api\Controllers\BrandingController;
+use Hiveclerk\Api\Controllers\PrivacyController;
 use Hiveclerk\Api\Controllers\LicenceController;
 use Hiveclerk\Api\Controllers\ProvidersController;
 use Hiveclerk\Api\Controllers\StreamController;
@@ -26,6 +27,7 @@ use Hiveclerk\Core\Licence\LicenceChunkQuota;
 use Hiveclerk\Core\Licence\LicenceClient;
 use Hiveclerk\Core\Licence\LicenceGate;
 use Hiveclerk\Core\Licence\LicenceService;
+use Hiveclerk\Core\Privacy\PrivacySettings;
 use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
@@ -38,6 +40,7 @@ use Hiveclerk\Core\Support\RateLimitStoreInterface;
 use Hiveclerk\Core\Support\Encryptor;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Database\Migrator;
+use Hiveclerk\Database\ServerInfo;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\ChunkQuotaInterface;
@@ -126,6 +129,15 @@ final class ApiServiceProvider extends ServiceProvider {
 		);
 
 		$container->singleton(
+			PrivacyController::class,
+			static fn ( Container $c ): PrivacyController => new PrivacyController(
+				$c->get( PrivacySettings::class ),
+				$c->get( ConversationRepositoryInterface::class ),
+				$c->get( AuditLogger::class )
+			)
+		);
+
+		$container->singleton(
 			SystemController::class,
 			static fn ( Container $c ): SystemController => new SystemController(
 				$c->get( Migrator::class ),
@@ -134,7 +146,9 @@ final class ApiServiceProvider extends ServiceProvider {
 				$c->get( AgentRepositoryInterface::class ),
 				$c->get( ConversationRepositoryInterface::class ),
 				$c->get( KnowledgeSourceRepositoryInterface::class ),
-				$c->get( QueueInterface::class )
+				$c->get( QueueInterface::class ),
+				$c->get( ServerInfo::class ),
+				$c->get( KeyResolver::class )
 			)
 		);
 
@@ -196,6 +210,7 @@ final class ApiServiceProvider extends ServiceProvider {
 				$server->add( $c->get( UsageController::class ) );
 				$server->add( $c->get( LicenceController::class ) );
 				$server->add( $c->get( BrandingController::class ) );
+				$server->add( $c->get( PrivacyController::class ) );
 
 				return $server;
 			}

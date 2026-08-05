@@ -81,6 +81,22 @@ final class EmailLogRepository extends AbstractRepository implements EmailLogRep
 		) > 0;
 	}
 
+	public function forEmail( string $email, int $limit, int $offset = 0 ): array {
+		return array_map(
+			fn ( array $row ): EmailLogEntry => $this->hydrate( $row ),
+			$this->fetchAll( 'to_email = %s', array( $email ), 'id', 'DESC', max( 1, $limit ), max( 0, $offset ) )
+		);
+	}
+
+	public function deleteForEmail( string $email ): int {
+		$table = $this->tableName();
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$done = $this->execute( "DELETE FROM `{$table}` WHERE to_email = %s", array( $email ) );
+
+		return $done ? (int) $this->db->rows_affected : 0;
+	}
+
 	public function statsFor( int $sequenceId ): array {
 		$log         = $this->tableName();
 		$enrollments = Schema::table( Schema::SEQUENCE_ENROLLMENTS );

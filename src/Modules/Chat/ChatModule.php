@@ -18,6 +18,8 @@ use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Branding\BrandingService;
 use Hiveclerk\Core\Container\Container;
 use Hiveclerk\Core\Module\AbstractModule;
+use Hiveclerk\Core\Privacy\IpHasher;
+use Hiveclerk\Core\Privacy\PrivacySettings;
 use Hiveclerk\Core\Support\ClockInterface;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
@@ -93,7 +95,8 @@ final class ChatModule extends AbstractModule {
 				$c->get( SessionRepositoryInterface::class ),
 				$c->get( ConversationRepositoryInterface::class ),
 				$c->get( ClockInterface::class ),
-				$c->get( VisitorResolverInterface::class )
+				$c->get( VisitorResolverInterface::class ),
+				$c->get( IpHasher::class )
 			)
 		);
 
@@ -104,7 +107,8 @@ final class ChatModule extends AbstractModule {
 			static fn ( Container $c ): WidgetConfig => new WidgetConfig(
 				$c->get( AgentRepositoryInterface::class ),
 				$c->get( PageContextFactory::class ),
-				$c->get( BrandingService::class )
+				$c->get( BrandingService::class ),
+				$c->get( PrivacySettings::class )
 			)
 		);
 
@@ -122,7 +126,7 @@ final class ChatModule extends AbstractModule {
 			static fn ( Container $c ): RetentionService => new RetentionService(
 				$c->get( ConversationRepositoryInterface::class ),
 				$c->get( SessionRepositoryInterface::class ),
-				$c->get( SettingsRepository::class ),
+				$c->get( PrivacySettings::class ),
 				$c->get( ClockInterface::class )
 			)
 		);

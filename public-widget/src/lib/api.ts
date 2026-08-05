@@ -71,6 +71,31 @@ function writeLocal(key: string, value: string): void {
   }
 }
 
+/**
+ * Where a consent decision is remembered.
+ *
+ * localStorage, not sessionStorage: re-asking on every page view would
+ * make the gate feel like a cookie banner that never learns, and a
+ * visitor who cleared their storage genuinely is somebody the site has
+ * no record of agreeing.
+ *
+ * Keyed by origin rather than by clerk, which localStorage does for us.
+ * Consent is given to the site's data handling, not to a particular
+ * clerk, and asking again because a different clerk serves the pricing
+ * page would be asking the same question twice.
+ */
+const CONSENT_KEY = 'hvc.consent';
+
+/** Whether this visitor has already accepted the site's consent notice. */
+export function accepted(): boolean {
+  return readLocal(CONSENT_KEY) === '1';
+}
+
+/** Record that they accepted. */
+export function remember(): void {
+  writeLocal(CONSENT_KEY, '1');
+}
+
 export class Api {
   private session: StoredSession | null = null;
 

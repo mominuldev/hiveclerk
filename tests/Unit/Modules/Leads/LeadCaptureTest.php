@@ -28,6 +28,8 @@ use Hiveclerk\Modules\Leads\Services\LeadService;
 use Hiveclerk\Modules\Leads\Services\ScoringPolicy;
 use Hiveclerk\Modules\Leads\Services\ScoringService;
 use Hiveclerk\Modules\Leads\Services\SignalCollector;
+use Hiveclerk\Core\Privacy\IpHasher;
+use Hiveclerk\Core\Privacy\PrivacySettings;
 use Hiveclerk\Modules\Leads\Services\VisitorService;
 use Hiveclerk\Modules\Leads\Support\AnswerMatcher;
 use Hiveclerk\Modules\Leads\Support\ContactExtractor;
@@ -104,7 +106,7 @@ final class LeadCaptureTest extends TestCase {
 			$this->messages,
 			$this->conversations,
 			$visitors,
-			new VisitorService( $visitors, $activities, $clock ),
+			new VisitorService( $visitors, $activities, $clock, new IpHasher( new PrivacySettings( new SettingsRepository(), $clock ) ) ),
 			$scoring,
 			new LeadService(
 				$this->leads,

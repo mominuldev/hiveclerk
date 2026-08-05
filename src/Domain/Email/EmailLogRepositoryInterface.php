@@ -74,4 +74,27 @@ interface EmailLogRepositoryInterface {
 	 * @return array<string, int>
 	 */
 	public function statsFor( int $sequenceId ): array;
+
+	/**
+	 * Every logged send to one address, newest first.
+	 *
+	 * Looked up by address rather than by lead id because the log outlives
+	 * the lead: a merge, a deletion or an earlier erasure can leave rows
+	 * whose `lead_id` points at nothing, and a privacy request that only
+	 * followed the id would report and erase less than the site holds.
+	 *
+	 * @param string $email  Normalised address.
+	 * @param int    $limit  Maximum rows.
+	 * @param int    $offset Rows to skip.
+	 * @return array<int, EmailLogEntry>
+	 */
+	public function forEmail( string $email, int $limit, int $offset = 0 ): array;
+
+	/**
+	 * Delete every logged send to one address.
+	 *
+	 * @param string $email Normalised address.
+	 * @return int Rows deleted.
+	 */
+	public function deleteForEmail( string $email ): int;
 }

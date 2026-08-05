@@ -24,9 +24,16 @@ final class Activator {
 	public static function activate(): void {
 		CapabilityManager::grant();
 
+		/*
+		 * No onboarding row is seeded. This used to write
+		 * `hiveclerk_onboarding_state`, which Sprint 9's OnboardingState
+		 * did not adopt — it owns `hiveclerk_onboarding` and treats a
+		 * missing option as "not started", which is the correct reading
+		 * of a site that has just installed the plugin. The seeded row was
+		 * therefore written on every activation and read by nothing.
+		 */
 		if ( false === get_option( 'hiveclerk_installed_at' ) ) {
 			add_option( 'hiveclerk_installed_at', gmdate( 'Y-m-d H:i:s' ), '', false );
-			add_option( 'hiveclerk_onboarding_state', array( 'step' => 0 ), '', false );
 		}
 
 		update_option( 'hiveclerk_version', HIVECLERK_VERSION, false );

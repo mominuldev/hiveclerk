@@ -1,4 +1,5 @@
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { ToastViewport } from '@/components/ui/Toast';
@@ -71,7 +72,20 @@ export function AppShell() {
         <TopBar title={page.title} subtitle={page.subtitle} />
         <main className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[var(--hvc-content-max)] px-6 py-6">
-            <Outlet />
+            {/*
+              Inside the shell rather than around it, so a screen that
+              throws leaves the sidebar, the roster and the top bar
+              standing. A boundary wrapping the whole app would catch the
+              same error and still leave the operator looking at a page
+              with no way out of it but the browser's back button.
+
+              Keyed on the path: navigating to another screen clears the
+              error, because the failure belonged to the screen that
+              threw and not to the session.
+            */}
+            <ErrorBoundary resetKey={pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>

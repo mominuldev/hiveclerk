@@ -10,7 +10,7 @@ declare( strict_types=1 );
 namespace Hiveclerk\Modules\Chat\Services;
 
 use DateTimeImmutable;
-use Hiveclerk\Core\Settings\SettingsRepository;
+use Hiveclerk\Core\Privacy\PrivacySettings;
 use Hiveclerk\Core\Support\ClockInterface;
 use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
 use Hiveclerk\Domain\Conversation\SessionRepositoryInterface;
@@ -46,20 +46,20 @@ final class RetentionService {
 	 * Five years. Past that the setting is indistinguishable from "keep
 	 * forever", which is its own value and is spelled 0.
 	 */
-	public const MAX_MONTHS = 60;
+	public const MAX_MONTHS = PrivacySettings::MAX_MONTHS;
 
 	/**
 	 * Construct.
 	 *
 	 * @param ConversationRepositoryInterface $conversations Conversation storage.
 	 * @param SessionRepositoryInterface      $sessions      Session storage.
-	 * @param SettingsRepository              $settings      Settings.
+	 * @param PrivacySettings                 $privacy       Privacy preferences.
 	 * @param ClockInterface                  $clock         Clock.
 	 */
 	public function __construct(
 		private readonly ConversationRepositoryInterface $conversations,
 		private readonly SessionRepositoryInterface $sessions,
-		private readonly SettingsRepository $settings,
+		private readonly PrivacySettings $privacy,
 		private readonly ClockInterface $clock
 	) {
 	}
@@ -70,13 +70,7 @@ final class RetentionService {
 	 * @return int
 	 */
 	public function months(): int {
-		$value = $this->settings->get( 'privacy.retention_months', 12 );
-
-		if ( ! is_numeric( $value ) ) {
-			return 12;
-		}
-
-		return max( 0, min( self::MAX_MONTHS, (int) $value ) );
+		return $this->privacy->months();
 	}
 
 	/**
@@ -85,13 +79,7 @@ final class RetentionService {
 	 * @return DateTimeImmutable|null
 	 */
 	public function cutoff(): ?DateTimeImmutable {
-		$months = $this->months();
-
-		if ( 0 === $months ) {
-			return null;
-		}
-
-		return $this->clock->now()->modify( sprintf( '-%d months', $months ) );
+		return $this->privacy->cutoff();
 	}
 
 	/**

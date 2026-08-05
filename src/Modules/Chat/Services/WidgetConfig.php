@@ -11,6 +11,7 @@ namespace Hiveclerk\Modules\Chat\Services;
 
 use Hiveclerk\Domain\Agent\Agent;
 use Hiveclerk\Core\Branding\BrandingService;
+use Hiveclerk\Core\Privacy\PrivacySettings;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Agent\PageContext;
 use Hiveclerk\Domain\Lead\LeadCapture;
@@ -37,11 +38,13 @@ final class WidgetConfig {
 	 * @param AgentRepositoryInterface $agents   Clerk storage.
 	 * @param PageContextFactory       $pages    Describes the current page.
 	 * @param BrandingService          $branding Badge, already reconciled with the licence.
+	 * @param PrivacySettings          $privacy  Privacy preferences.
 	 */
 	public function __construct(
 		private readonly AgentRepositoryInterface $agents,
 		private readonly PageContextFactory $pages,
-		private readonly BrandingService $branding
+		private readonly BrandingService $branding,
+		private readonly PrivacySettings $privacy
 	) {
 	}
 
@@ -126,9 +129,16 @@ final class WidgetConfig {
 				'handoff'   => true,
 				'feedback'  => true,
 			),
+			/*
+			 * The site-wide gate, not the per-clerk capture checkbox
+			 * below. When it is on the widget makes no request at all —
+			 * not even the page-view ping — until the visitor accepts,
+			 * because a telemetry row written before consent is the row
+			 * the consent was for.
+			 */
 			'consent'      => array(
-				'required' => false,
-				'text'     => null,
+				'required' => $this->privacy->requiresConsent(),
+				'text'     => $this->privacy->consentText(),
 			),
 			// What the widget is allowed to ask for, and after how many
 			// messages (FR-LED-01). The questions themselves are not sent:

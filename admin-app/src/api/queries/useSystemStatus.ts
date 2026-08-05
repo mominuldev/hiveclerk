@@ -32,3 +32,51 @@ export function useSystemStatus() {
     },
   });
 }
+
+export interface SystemHealth {
+  php: {
+    version: string;
+    memory_limit: string;
+    max_execution_time: string;
+    openssl: boolean;
+  };
+  wordpress: { version: string; multisite: boolean; cron_disabled: boolean };
+  mysql: { version: string; mariadb: boolean; charset: string; collation: string };
+  database: {
+    version: number;
+    latest: number;
+    tables_present: number;
+    tables_total: number;
+    missing: string[];
+  };
+  queue: { driver: string; depth: number };
+  cron: {
+    scheduled: number;
+    overdue: number;
+    events: { hook: string; next_run: string; is_late: boolean }[];
+  };
+  providers: {
+    provider: string;
+    from_config: boolean;
+    model: string;
+    verified_at: string;
+  }[];
+  object_cache: { persistent: boolean; note: string };
+}
+
+/**
+ * Environment diagnostics.
+ *
+ * Never refetched on window focus. Every value here changes on the scale
+ * of a deploy, and a screen that re-queried the database server's version
+ * each time an operator tabbed back would spend requests to tell them
+ * nothing new.
+ */
+export function useSystemHealth() {
+  return useQuery({
+    queryKey: ['system', 'health'] as const,
+    queryFn: async ({ signal }) =>
+      (await api.get<SystemHealth>('system/health', undefined, signal)).data,
+    refetchOnWindowFocus: false,
+  });
+}

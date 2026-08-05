@@ -13,6 +13,7 @@ use Brain\Monkey;
 use Brain\Monkey\Functions;
 use DateTimeImmutable;
 use DateTimeZone;
+use Hiveclerk\Core\Privacy\PrivacySettings;
 use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Domain\Conversation\Conversation;
 use Hiveclerk\Domain\Shared\Uuid;
@@ -58,7 +59,10 @@ final class RetentionTest extends TestCase {
 		$this->retention = new RetentionService(
 			$this->conversations,
 			new InMemorySessions(),
-			new SettingsRepository(),
+			new PrivacySettings(
+				new SettingsRepository(),
+				new FrozenClock( new DateTimeImmutable( '2026-08-05 10:00:00', new DateTimeZone( 'UTC' ) ) )
+			),
 			new FrozenClock( new DateTimeImmutable( '2026-08-05 10:00:00', new DateTimeZone( 'UTC' ) ) )
 		);
 	}
@@ -122,7 +126,10 @@ final class RetentionTest extends TestCase {
 		return new RetentionService(
 			$this->conversations,
 			new InMemorySessions(),
-			new SettingsRepository(),
+			new PrivacySettings(
+				new SettingsRepository(),
+				new FrozenClock( new DateTimeImmutable( '2026-08-05 10:00:00', new DateTimeZone( 'UTC' ) ) )
+			),
 			new FrozenClock( new DateTimeImmutable( '2026-08-05 10:00:00', new DateTimeZone( 'UTC' ) ) )
 		);
 	}

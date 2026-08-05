@@ -124,10 +124,21 @@ final class SettingsRepository {
 				'embed_provider' => null,
 				'embed_model'    => null,
 			),
+			/*
+			 * Every key here is read somewhere. `anonymise_ip` used to sit
+			 * in this list and was read by nothing: an address is salted
+			 * and hashed at the point it is read on every path, and the
+			 * original is never held, so the setting described a choice
+			 * the product does not offer. `store_ip_hash` replaces it with
+			 * one it does — whether the hash is kept at all. See
+			 * {@see \Hiveclerk\Core\Privacy\PrivacySettings}.
+			 */
 			'privacy'    => array(
-				'retention_months' => 12,
-				'anonymise_ip'     => true,
-				'require_consent'  => false,
+				'retention_months'    => 12,
+				'store_ip_hash'       => true,
+				'require_consent'     => false,
+				'consent_text'        => null,
+				'delete_on_uninstall' => false,
 			),
 			'branding'   => array(
 				'white_label'  => false,

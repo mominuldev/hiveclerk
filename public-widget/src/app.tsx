@@ -4,12 +4,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Api } from './lib/api';
+import { Api, accepted, remember } from './lib/api';
 import { send as deliver } from './lib/transport';
 import { strings } from './lib/i18n';
 import { Bubble } from './components/Bubble';
 import { Capture } from './components/Capture';
 import { Composer } from './components/Composer';
+import { Consent } from './components/Consent';
 import { IconChat, IconClose, IconMinimise } from './components/Icons';
 import type { ChatMessage, Transport, WidgetBoot } from './types';
 
@@ -30,6 +31,16 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
   const [humanActive, setHumanActive] = useState(false);
   const [captured, setCaptured] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+
+  /*
+   * The site-wide consent gate. Read from storage on the first render
+   * rather than in an effect, because an effect runs after the page-view
+   * ping below would already have fired — and a telemetry row written
+   * before the visitor agreed is the row the gate exists to prevent.
+   */
+  const consentRequired = boot.consent?.required ?? false;
+  const [consented, setConsented] = useState(() => !consentRequired || accepted());
+  const [declined, setDeclined] = useState(false);
 
   const log = useRef<HTMLDivElement | null>(null);
   const launcher = useRef<HTMLButtonElement | null>(null);
@@ -56,12 +67,16 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
    * nobody chats on.
    */
   useEffect(() => {
+    if (!consented) {
+      return;
+    }
+
     void api.pageView();
-  }, [api]);
+  }, [api, consented]);
 
   /* Restore a transcript when the panel is opened on a later page view. */
   useEffect(() => {
-    if (!open || messages.length > 0 || !api.conversation()) {
+    if (!open || !consented || messages.length > 0 || !api.conversation()) {
       return;
     }
 
@@ -73,7 +88,7 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
       setAwaitingHuman(restored.awaitingHuman);
       setHumanActive(restored.humanActive);
     });
-  }, [open, messages.length, api]);
+  }, [open, consented, messages.length, api]);
 
   /*
    * While a colleague has the conversation, the transcript is re-read on a
@@ -315,6 +330,27 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
         </button>
       </div>
 
+      {!consented ? (
+        <div class="log" ref={log}>
+          {declined ? (
+            <div class="notice">{labels.consentDeclined}</div>
+          ) : (
+            <Consent
+              labels={labels}
+              text={boot.consent?.text ?? ''}
+              onAccept={() => {
+                remember();
+                setConsented(true);
+              }}
+              onDecline={() => {
+                setDeclined(true);
+                setOpen(false);
+                launcher.current?.focus();
+              }}
+            />
+          )}
+        </div>
+      ) : (
       <div class="log" ref={log} role="log" aria-live="polite" aria-atomic="false">
         {visible.map((message) => (
           <Bubble key={message.id} message={message} labels={labels} onRate={rate} />
@@ -345,8 +381,9 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
 
         {error ? <div class="error">{error}</div> : null}
       </div>
+      )}
 
-      {boot.capabilities.handoff && !awaitingHuman ? (
+      {consented && boot.capabilities.handoff && !awaitingHuman ? (
         <button
           type="button"
           class="handoff"
@@ -376,7 +413,7 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
         </button>
       ) : null}
 
-      <Composer labels={labels} busy={busy} onSend={submit} />
+      {consented ? <Composer labels={labels} busy={busy} onSend={submit} /> : null}
 
       {boot.agent.branding.show_badge ? (
         <div class="badge">{boot.agent.branding.label}</div>

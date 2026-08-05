@@ -60,6 +60,7 @@ use Hiveclerk\Domain\Lead\ScoreEventRepositoryInterface;
 use Hiveclerk\Domain\Lead\VisitorRepositoryInterface;
 use Hiveclerk\Domain\Usage\UsageRepositoryInterface;
 use Hiveclerk\Database\Migrator;
+use Hiveclerk\Database\ServerInfo;
 use Hiveclerk\Database\Repositories\AgentRepository;
 use Hiveclerk\Database\Repositories\CitationRepository;
 use Hiveclerk\Database\Repositories\ConversationRepository;
@@ -104,6 +105,11 @@ final class DatabaseServiceProvider extends ServiceProvider {
 	 * @return void
 	 */
 	public function register( Container $container ): void {
+		$container->singleton(
+			ServerInfo::class,
+			static fn (): ServerInfo => new ServerInfo()
+		);
+
 		$container->singleton(
 			Migrator::class,
 			static function (): Migrator {

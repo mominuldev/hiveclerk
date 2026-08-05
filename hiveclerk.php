@@ -112,6 +112,25 @@ function hiveclerk_bootstrap() {
 
 add_action( 'plugins_loaded', 'hiveclerk_bootstrap', 5 );
 
+/*
+ * Bundled translations, loaded on `init` rather than on `plugins_loaded`.
+ *
+ * WordPress has auto-loaded translations for .org-hosted plugins since 4.6,
+ * so this covers the other case: a customer who was sent a .mo file, or a
+ * site running a build from outside the directory. Both put it in
+ * `languages/`, which nothing would read without this call.
+ *
+ * On `init` because WordPress 6.7 started warning about translations loaded
+ * before that hook — the locale is not final until then, and a textdomain
+ * loaded early gets the wrong one on any site that switches locale per user.
+ */
+add_action(
+	'init',
+	static function (): void {
+		load_plugin_textdomain( 'hiveclerk', false, dirname( HIVECLERK_BASENAME ) . '/languages' );
+	}
+);
+
 register_activation_hook(
 	__FILE__,
 	function () {

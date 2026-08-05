@@ -207,7 +207,10 @@ final class IntegrationsModule extends AbstractModule {
 				$c->get( FieldMapper::class ),
 				$c->get( OAuthService::class ),
 				$c->get( AgentRepositoryInterface::class ),
-				$c->get( LicenceGate::class )
+				$c->get( LicenceGate::class ),
+				$c->get( LeadRepositoryInterface::class ),
+				$c->get( SyncService::class ),
+				$c->get( AuditLogger::class )
 			)
 		);
 	}

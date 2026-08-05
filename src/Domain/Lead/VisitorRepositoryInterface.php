@@ -76,4 +76,21 @@ interface VisitorRepositoryInterface {
 	 * @return int Rows updated.
 	 */
 	public function detachLead( int $leadId ): int;
+
+	/**
+	 * Delete a lead's visitors outright, and their sessions with them.
+	 *
+	 * The counterpart to `detachLead()`, and the difference between them
+	 * is the difference between deleting a lead and erasing a person.
+	 * Detaching is right when an operator removes a record from their CRM:
+	 * the site keeps its traffic history and loses only the link. It is
+	 * wrong when the person themselves has asked to be erased, because a
+	 * visitor row carries a browser fingerprint and a hashed IP, and a
+	 * fingerprint that survives is what re-identifies the same person on
+	 * their next visit.
+	 *
+	 * @param int $leadId Lead storage id.
+	 * @return int Visitors deleted.
+	 */
+	public function deleteForLead( int $leadId ): int;
 }

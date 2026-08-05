@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Modules\Leads\Services;
 
+use Hiveclerk\Core\Privacy\IpHasher;
 use Hiveclerk\Core\Support\ClockInterface;
 use Hiveclerk\Domain\Lead\Activity;
 use Hiveclerk\Domain\Lead\ActivityRepositoryInterface;
@@ -70,11 +71,13 @@ final class VisitorService implements VisitorResolverInterface {
 	 * @param VisitorRepositoryInterface  $visitors   Visitor storage.
 	 * @param ActivityRepositoryInterface $activities Timeline.
 	 * @param ClockInterface              $clock      Clock.
+	 * @param IpHasher                    $ipHasher   Address hashing, honouring the site's privacy setting.
 	 */
 	public function __construct(
 		private readonly VisitorRepositoryInterface $visitors,
 		private readonly ActivityRepositoryInterface $activities,
-		private readonly ClockInterface $clock
+		private readonly ClockInterface $clock,
+		private readonly IpHasher $ipHasher
 	) {
 	}
 
@@ -104,7 +107,7 @@ final class VisitorService implements VisitorResolverInterface {
 				id: null,
 				uuid: Uuid::generate(),
 				wpUserId: $this->userId(),
-				ipHash: $this->hashedIp(),
+				ipHash: $this->ipHasher->hash(),
 				userAgent: $this->userAgent(),
 				country: $this->country( $context ),
 				language: $this->text( $context['language'] ?? null, 10 ),
@@ -261,29 +264,6 @@ final class VisitorService implements VisitorResolverInterface {
 		$id = get_current_user_id();
 
 		return $id > 0 ? $id : null;
-	}
-
-	/**
-	 * A salted hash of the caller's IP.
-	 *
-	 * @return string|null
-	 */
-	private function hashedIp(): ?string {
-		$remote = $_SERVER['REMOTE_ADDR'] ?? null; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotValidated
-
-		if ( ! is_string( $remote ) ) {
-			return null;
-		}
-
-		$ip = filter_var( wp_unslash( $remote ), FILTER_VALIDATE_IP );
-
-		if ( ! is_string( $ip ) ) {
-			return null;
-		}
-
-		$salt = defined( 'AUTH_SALT' ) ? (string) AUTH_SALT : '';
-
-		return hash( 'sha256', $salt . '|' . $ip );
 	}
 
 	/**

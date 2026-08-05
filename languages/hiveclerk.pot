@@ -1,0 +1,1236 @@
+# Copyright (C) 2026 Decent Themes
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: Hiveclerk 0.1.0-dev\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/hiveclerk\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-08-05T19:17:51+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: hiveclerk\n"
+
+#. Plugin Name of the plugin
+#: hiveclerk.php
+#: src/Core/Admin/AdminPage.php:68
+#: src/Core/Admin/AdminPage.php:181
+msgid "Hiveclerk"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: hiveclerk.php
+msgid "https://hiveclerk.com"
+msgstr ""
+
+#. Description of the plugin
+#: hiveclerk.php
+msgid "A hive of AI clerks for your website. Deploy AI employees that talk to visitors, qualify leads and answer support questions."
+msgstr ""
+
+#. Author of the plugin
+#: hiveclerk.php
+msgid "Decent Themes"
+msgstr ""
+
+#. Author URI of the plugin
+#: hiveclerk.php
+msgid "https://decenthemes.com"
+msgstr ""
+
+#. translators: 1: required PHP version, 2: current PHP version
+#: hiveclerk.php:49
+#, php-format
+msgid "Hiveclerk needs PHP %1$s or newer. This site runs PHP %2$s."
+msgstr ""
+
+#. translators: 1: required WordPress version, 2: current WordPress version
+#: hiveclerk.php:58
+#, php-format
+msgid "Hiveclerk needs WordPress %1$s or newer. This site runs WordPress %2$s."
+msgstr ""
+
+#: hiveclerk.php:65
+msgid "Hiveclerk is missing its dependencies. Run \"composer install\" in the plugin directory."
+msgstr ""
+
+#: hiveclerk.php:79
+msgid "Hiveclerk could not start."
+msgstr ""
+
+#: hiveclerk.php:124
+msgid "Hiveclerk could not be activated"
+msgstr ""
+
+#: src/Core/Admin/AdminPage.php:164
+msgid "You do not have access to Hiveclerk."
+msgstr ""
+
+#: src/Core/Admin/AdminPage.php:183
+msgid "The admin app has not been built yet. Run \"npm install && npm run build\" in the plugin directory."
+msgstr ""
+
+#. translators: %s: product name.
+#: src/Core/Branding/BrandingService.php:82
+#, php-format
+msgid "Powered by %s"
+msgstr ""
+
+#. translators: 1: feature name, 2: plan name.
+#: src/Core/Licence/LicenceGate.php:93
+#, php-format
+msgid "%1$s is part of %2$s."
+msgstr ""
+
+#. translators: %d: number of clerks included.
+#: src/Core/Licence/LicenceGate.php:146
+#, php-format
+msgid "A free licence covers %d clerk. Pro removes the limit."
+msgid_plural "A free licence covers %d clerks. Pro removes the limit."
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %s: chunk limit, already formatted.
+#: src/Core/Licence/LicenceGate.php:176
+#, php-format
+msgid "This licence covers %s indexed chunks, and they are all in use. Everything already indexed keeps working."
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataEraser.php:85
+#: src/Core/Privacy/PersonalDataExporter.php:97
+msgid "Hiveclerk conversations and leads"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataEraser.php:130
+msgid "Hiveclerk kept a one-way hash of this address on its do-not-email list. Without it, the next import would start emailing this person again. No other detail was kept."
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:169
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:286
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:255
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:350
+#: src/Modules/Integrations/Services/FieldMapper.php:148
+msgid "Email"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:173
+msgid "Name"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:177
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:289
+#: src/Modules/Integrations/Services/FieldMapper.php:151
+msgid "Phone"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:181
+#: src/Modules/Integrations/Services/FieldMapper.php:152
+msgid "Company"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:185
+#: src/Core/Privacy/PersonalDataExporter.php:247
+msgid "First seen"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:189
+msgid "Last active"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:193
+msgid "How they were captured"
+msgstr ""
+
+#. translators: %s: the question key a clerk asked, e.g. "budget".
+#: src/Core/Privacy/PersonalDataExporter.php:210
+#, php-format
+msgid "Answer: %s"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:220
+msgid "Contact record"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:242
+msgid "Site visits"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:251
+msgid "Last seen"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:255
+msgid "Pages viewed"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:259
+msgid "Browser reported"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:263
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:296
+msgid "Country"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:267
+msgid "Language"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:275
+msgid "IP address"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:278
+msgid "Stored as a one-way hash. The address itself was never recorded."
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:312
+msgid "Activity history"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:317
+msgid "When"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:321
+msgid "What happened"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:325
+msgid "Detail"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:348
+msgid "Emails sent to you"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:353
+msgid "Subject"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:357
+#: src/Modules/Integrations/Services/FieldMapper.php:157
+msgid "Status"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:361
+msgid "Sent"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:404
+msgid "Started"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:408
+msgid "Page"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:416
+msgid "You said"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:417
+msgid "The clerk said"
+msgstr ""
+
+#: src/Core/Privacy/PersonalDataExporter.php:424
+msgid "Chat transcripts"
+msgstr ""
+
+#: src/Core/Privacy/PrivacySettings.php:142
+msgid "This chat is recorded so we can answer your question and follow up. Continue?"
+msgstr ""
+
+#: src/Modules/Agents/Http/AgentController.php:405
+msgid "Type something to ask the clerk."
+msgstr ""
+
+#: src/Modules/Agents/Http/AgentController.php:433
+msgid "That is not a valid clerk id."
+msgstr ""
+
+#: src/Modules/Agents/Http/AgentController.php:443
+msgid "That clerk does not exist."
+msgstr ""
+
+#: src/Modules/Agents/Services/AgentService.php:79
+msgid "That is not a role this installation offers."
+msgstr ""
+
+#. translators: %s: name of the clerk being copied.
+#: src/Modules/Agents/Services/AgentService.php:253
+#, php-format
+msgid "%s (copy)"
+msgstr ""
+
+#: src/Modules/Agents/Services/AgentService.php:362
+msgid "Give the clerk a name before putting it on duty."
+msgstr ""
+
+#: src/Modules/Agents/Services/AgentService.php:366
+msgid "Choose the model this clerk answers with. Nothing can be published without one."
+msgstr ""
+
+#: src/Modules/Agents/Services/AgentService.php:370
+msgid "Write what this clerk does. A clerk with no job description answers like a search box."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:101
+msgid "Support"
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:102
+msgid "Answers questions about orders, policies and how things work."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:103
+msgid ""
+"You answer customer questions about this business: products, orders, delivery, returns and policies.\n"
+"\n"
+"Answer from the reference material you are given. When it covers the question, answer directly and quote the specific figure — the number of days, the price, the size — rather than describing where to find it.\n"
+"\n"
+"When it does not cover the question, say so in one sentence and offer to pass the question to a person. Do not guess at a policy, and do not soften a gap with a general statement that sounds like an answer.\n"
+"\n"
+"If someone is frustrated, acknowledge it once, briefly, and then solve the problem. Do not apologise repeatedly."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:113
+msgid "Hi — ask me anything about orders, delivery or returns."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:114
+#: src/Modules/Agents/Services/PresetLibrary.php:253
+msgid "I don't have that in what I've been given to read. If you leave your email, someone here will follow it up."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:130
+msgid "Sales"
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:131
+msgid "Helps visitors choose, then moves them towards a decision."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:132
+msgid ""
+"You help visitors work out which product is right for them, and then help them buy it.\n"
+"\n"
+"Ask about their situation before recommending anything: what they will use it for, the conditions they expect, the constraints they are working within. One question at a time.\n"
+"\n"
+"Recommend from the reference material and say why the recommendation fits what they told you. Name the trade-off honestly — a visitor who is told the downside believes the upside.\n"
+"\n"
+"Never invent a price, a discount, a stock level or a delivery date. If the material does not state it, say you will check."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:142
+msgid "Looking for something in particular? Tell me what you need it for."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:143
+msgid "I don't want to guess at that one. Leave your email and someone who knows the detail will come back to you."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:159
+msgid "Lead qualifier"
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:160
+msgid "Finds out who is worth a call, and gets their details."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:161
+msgid ""
+"Your job is to find out whether this visitor is a fit for the business, and to get a way of contacting them.\n"
+"\n"
+"Ask what they are trying to achieve, roughly what scale they are working at, and when they need it. One question per message — a form disguised as a conversation is still a form.\n"
+"\n"
+"Once you understand what they need, ask for their name and email so someone can follow up properly. Say what will happen next and how soon.\n"
+"\n"
+"Answer questions they ask you along the way, briefly, and return to the thread."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:171
+msgid "Hi — tell me what you are trying to do and I will point you at the right person."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:172
+msgid "That one needs a person. Leave your email and I will make sure it reaches them."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:192
+msgid "FAQ"
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:193
+msgid "Answers only what is written down, and says so when it is not."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:194
+msgid ""
+"You answer frequently asked questions using only the reference material you are given.\n"
+"\n"
+"Answer in two or three sentences. Lead with the answer, not with context.\n"
+"\n"
+"If the material does not answer the question, say that plainly and offer the next step. Do not extrapolate from a nearby answer — a plausible answer to the wrong question is worse than no answer."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:202
+msgid "Ask me anything — I answer from our published help pages."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:203
+msgid "That isn't in our help pages yet. Would you like me to pass it on?"
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:220
+msgid "Concierge"
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:221
+msgid "Points visitors at the right page, person or next step."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:222
+msgid ""
+"You help visitors find their way around this site and this business.\n"
+"\n"
+"Work out what they are actually trying to do, then send them to the page or the person that does it. Give the name of the page, not a vague direction.\n"
+"\n"
+"Keep it short. You are a signpost, not the destination.\n"
+"\n"
+"When something needs a person, say who and offer to take their details."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:232
+msgid "Hello — what are you looking for today?"
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:233
+msgid "I'm not sure where that lives. Leave your email and someone will point you the right way."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:249
+msgid "Custom"
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:250
+msgid "Write the job description yourself."
+msgstr ""
+
+#: src/Modules/Agents/Services/PresetLibrary.php:252
+msgid "Hi — how can I help?"
+msgstr ""
+
+#. translators: %d: number of clerks a free licence may have on duty.
+#: src/Modules/Agents/Services/PublishPolicy.php:124
+#, php-format
+msgid "A free licence keeps %d clerk on duty at a time. Pause the one that is working, or upgrade to run more."
+msgid_plural "A free licence keeps %d clerks on duty at a time. Pause one, or upgrade to run more."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/Modules/Agents/Services/TestConsoleService.php:108
+msgid "This clerk has no model selected, so there is nothing to ask."
+msgstr ""
+
+#. translators: %s: how long somebody has been waiting, e.g. "14 minutes".
+#: src/Modules/Analytics/Services/AlertService.php:122
+#, php-format
+msgid "Handoff waiting %s"
+msgstr ""
+
+#. translators: %s: clerk name.
+#: src/Modules/Analytics/Services/AlertService.php:151
+#, php-format
+msgid "%s is paused"
+msgstr ""
+
+#: src/Modules/Analytics/Services/AlertService.php:154
+msgid "Visitors on the pages this clerk serves see nothing."
+msgstr ""
+
+#. translators: 1: connector name, 2: failure count.
+#: src/Modules/Analytics/Services/AlertService.php:186
+#, php-format
+msgid "%1$s sync failing (%2$d)"
+msgstr ""
+
+#: src/Modules/Analytics/Services/AlertService.php:190
+msgid "Leads captured since the first failure have not reached it."
+msgstr ""
+
+#. translators: %d: number of questions.
+#: src/Modules/Analytics/Services/AlertService.php:229
+#, php-format
+msgid "%d question went unanswered this week."
+msgid_plural "%d questions went unanswered this week."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/Modules/Analytics/Services/AlertService.php:237
+msgid "Writing one answer fixes it for everybody who asks next."
+msgstr ""
+
+#. translators: %d: minutes.
+#: src/Modules/Analytics/Services/AlertService.php:254
+#, php-format
+msgid "%d minute"
+msgid_plural "%d minutes"
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: %d: hours.
+#: src/Modules/Analytics/Services/AlertService.php:260
+#, php-format
+msgid "%d hour"
+msgid_plural "%d hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#. translators: 1: number of visitors lost, 2: funnel step name.
+#: src/Modules/Analytics/Services/AnalyticsService.php:234
+#, php-format
+msgid "%1$s visitors reached the previous step and did not become %2$s."
+msgstr ""
+
+#: src/Modules/Chat/Http/ConversationController.php:338
+msgid "Write something before sending it."
+msgstr ""
+
+#: src/Modules/Chat/Http/ConversationController.php:427
+msgid "A note needs something in it."
+msgstr ""
+
+#: src/Modules/Chat/Http/ConversationController.php:437
+msgid "Someone"
+msgstr ""
+
+#: src/Modules/Chat/Http/ConversationController.php:490
+msgid "That is not a valid conversation id."
+msgstr ""
+
+#: src/Modules/Chat/Http/ConversationController.php:500
+msgid "That conversation does not exist. It may have passed the retention policy."
+msgstr ""
+
+#: src/Modules/Chat/Http/ConversationController.php:609
+msgid "Retired clerk"
+msgstr ""
+
+#: src/Modules/Chat/Http/ConversationController.php:712
+msgid "A former colleague"
+msgstr ""
+
+#: src/Modules/Chat/Http/HandoffController.php:127
+msgid "Passed to a colleague. They will reply in this chat."
+msgstr ""
+
+#: src/Modules/Chat/Services/HandoffService.php:235
+msgid "I've passed this to a colleague. They'll reply here — leave the chat open, or leave your email and they'll write to you."
+msgstr ""
+
+#. translators: %s: name of the clerk that was handling the conversation.
+#: src/Modules/Chat/Services/HandoffService.php:272
+#, php-format
+msgid "A visitor talking to %s has asked for a person."
+msgstr ""
+
+#: src/Modules/Chat/Services/HandoffService.php:279
+msgid "What they said:"
+msgstr ""
+
+#. translators: %s: URL of the page the conversation started on.
+#: src/Modules/Chat/Services/HandoffService.php:287
+#, php-format
+msgid "Page: %s"
+msgstr ""
+
+#. translators: %s: link to the conversation in the admin.
+#: src/Modules/Chat/Services/HandoffService.php:294
+#, php-format
+msgid "Open the conversation: %s"
+msgstr ""
+
+#: src/Modules/Chat/Services/HandoffService.php:300
+msgid "Someone is waiting to talk to a person"
+msgstr ""
+
+#: src/Modules/Email/Http/SequenceController.php:473
+#: src/Modules/Email/Http/SequenceController.php:501
+#: src/Modules/Email/Http/SequenceController.php:595
+msgid "That sequence no longer exists."
+msgstr ""
+
+#: src/Modules/Email/Http/SequenceController.php:531
+msgid "Drafting needs a published clerk with a provider and model set. Publish one first."
+msgstr ""
+
+#: src/Modules/Email/Http/SequenceController.php:549
+msgid "The model did not return a usable draft. Try again, or write the email yourself."
+msgstr ""
+
+#: src/Modules/Email/Http/SequenceController.php:605
+msgid "That lead has no email address to preview against."
+msgstr ""
+
+#: src/Modules/Email/Http/SequenceController.php:801
+msgid "That sequence does not exist."
+msgstr ""
+
+#: src/Modules/Email/Http/SequenceController.php:817
+msgid "That email does not exist."
+msgstr ""
+
+#: src/Modules/Email/Http/UnsubscribeController.php:119
+msgid "That unsubscribe link is not valid. Reply to the email and we will remove you by hand."
+msgstr ""
+
+#: src/Modules/Email/Http/UnsubscribeController.php:204
+msgid "You have been unsubscribed"
+msgstr ""
+
+#: src/Modules/Email/Http/UnsubscribeController.php:205
+msgid "We will not send you any more follow-up email from this site. Nothing else changes, and you can still get in touch whenever you want to."
+msgstr ""
+
+#: src/Modules/Email/Services/EmailRenderer.php:156
+msgid "Unsubscribe:"
+msgstr ""
+
+#: src/Modules/Email/Services/EmailRenderer.php:214
+msgid "Unsubscribe from these emails"
+msgstr ""
+
+#: src/Modules/Email/Services/EmailSender.php:79
+#: src/Modules/Email/Services/EmailSender.php:81
+msgid "That address is on the suppression list."
+msgstr ""
+
+#: src/Modules/Email/Services/EmailSender.php:93
+msgid "wp_mail() refused the message. Check the site’s mail configuration."
+msgstr ""
+
+#. translators: %s: email subject.
+#: src/Modules/Email/Services/EmailSender.php:104
+#, php-format
+msgid "Email sent: %s"
+msgstr ""
+
+#: src/Modules/Email/Services/SequenceService.php:94
+msgid "Give the sequence a name."
+msgstr ""
+
+#: src/Modules/Email/Services/SequenceService.php:169
+msgid "Save the sequence before activating it."
+msgstr ""
+
+#: src/Modules/Email/Services/SequenceService.php:175
+msgid "Add at least one email before activating this sequence."
+msgstr ""
+
+#. translators: 1: step number, 2: what needs doing.
+#: src/Modules/Email/Services/SequenceService.php:185
+#, php-format
+msgid "Email %1$d is not ready: %2$s"
+msgstr ""
+
+#: src/Modules/Email/Services/SequenceService.php:277
+msgid "Save the sequence before adding emails to it."
+msgstr ""
+
+#. translators: %d: maximum number of steps.
+#: src/Modules/Email/Services/SequenceService.php:285
+#, php-format
+msgid "A sequence holds at most %d emails."
+msgstr ""
+
+#: src/Modules/Email/Services/SequenceService.php:368
+msgid "Finish writing this email before approving it."
+msgstr ""
+
+#. translators: %s: suppression reason.
+#: src/Modules/Email/Services/SuppressionList.php:114
+#, php-format
+msgid "Removed from email: %s"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:82
+msgid "Push qualified leads straight into FluentCRM on this site. No API key, nothing leaves the server."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:109
+msgid "FluentCRM is not active on this site. Install and activate it, then connect again."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:126
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:173
+msgid "FluentCRM is not active on this site."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:133
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:215
+msgid "FluentCRM is active but its contacts API did not answer."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:137
+msgid "FluentCRM answered."
+msgstr ""
+
+#. translators: %s: error message from FluentCRM.
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:145
+#, php-format
+msgid "FluentCRM raised an error: %s"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:177
+msgid "FluentCRM identifies contacts by email and this lead has none."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:222
+msgid "FluentCRM refused the contact."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:287
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:256
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:351
+#: src/Modules/Integrations/Services/FieldMapper.php:149
+msgid "First name"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:288
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:257
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:352
+#: src/Modules/Integrations/Services/FieldMapper.php:150
+msgid "Last name"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:290
+msgid "Designation"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:291
+msgid "Address line 1"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:292
+msgid "Address line 2"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:293
+msgid "City"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:294
+msgid "State"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:295
+msgid "Postal code"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/FluentCrmConnector.php:297
+msgid "Source"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:60
+msgid "Create Groundhogg contacts on this site as leads qualify. No API key, nothing leaves the server."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:87
+msgid "Groundhogg is not active on this site. Install and activate it, then connect again."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:104
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:143
+msgid "Groundhogg is not active on this site."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:113
+msgid "Groundhogg answered."
+msgstr ""
+
+#. translators: %s: error message from Groundhogg.
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:118
+#, php-format
+msgid "Groundhogg raised an error: %s"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:147
+msgid "Groundhogg identifies contacts by email and this lead has none."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:176
+msgid "Groundhogg returned something that is not a contact."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:182
+msgid "Groundhogg did not create the contact."
+msgstr ""
+
+#. translators: %s: Groundhogg contact meta key.
+#: src/Modules/Integrations/Connectors/GroundhoggConnector.php:265
+#, php-format
+msgid "Meta: %s"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:89
+msgid "Sync qualified leads into HubSpot contacts. Uses your own private app, so the credentials never leave this server."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:94
+msgid "Client ID"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:98
+msgid "From your HubSpot private app, under Auth."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:102
+msgid "Client secret"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:106
+msgid "Stored encrypted. It is never shown again after you save it."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:167
+msgid "There is no refresh token stored. Reconnect HubSpot."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:195
+msgid "HubSpot needs both a client ID and a client secret from your private app."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:210
+msgid "HubSpot is not connected yet."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:228
+msgid "HubSpot answered."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:251
+msgid "HubSpot is not connected."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:255
+msgid "HubSpot identifies contacts by email and this lead has none."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:353
+msgid "Phone number"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:354
+msgid "Company name"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:355
+#: src/Modules/Integrations/Services/FieldMapper.php:153
+msgid "Job title"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:356
+msgid "Website URL"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/HubSpotConnector.php:471
+msgid "HubSpot returned no access token."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/SlackConnector.php:64
+msgid "Post qualified leads into a Slack channel through an incoming webhook."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/SlackConnector.php:69
+msgid "Incoming webhook URL"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/SlackConnector.php:73
+msgid "From Slack, under Incoming Webhooks. Stored encrypted — it is a credential, not a setting."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/SlackConnector.php:92
+msgid "That is not a Slack incoming webhook URL. It starts https://hooks.slack.com/."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/SlackConnector.php:108
+msgid "Hiveclerk is connected. Qualified leads will appear in this channel."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/SlackConnector.php:114
+msgid "Slack accepted the message. Check the channel."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/SlackConnector.php:145
+msgid "Open the lead"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:65
+msgid "Webhook"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:68
+msgid "Post every qualified lead to a URL you control, signed so you can prove it came from this site."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:73
+msgid "Endpoint URL"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:77
+msgid "Must be https. Private and link-local addresses are refused."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:82
+msgid "Signing secret"
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:86
+msgid "Generated for you if you leave this blank. Verify X-HVC-Signature against it."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:103
+msgid "The endpoint must be an https URL."
+msgstr ""
+
+#. translators: %d: HTTP status code.
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:144
+#, php-format
+msgid "The endpoint answered %d."
+msgstr ""
+
+#: src/Modules/Integrations/Connectors/WebhookConnector.php:204
+msgid "email"
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:333
+msgid "That integration needs its own plugin installed and active on this site first."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:377
+msgid "The provider did not send an authorisation code."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:408
+msgid "That integration is not connected yet."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:444
+msgid "That integration is not connected."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:487
+msgid "No lead with that identifier."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:507
+msgid "This lead has no email address, and every connector identifies a contact by one. Add an address first."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:556
+msgid "Nothing to send. Either no connector is usable, or this lead is already queued."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:557
+msgid "Queued. The sync runs in the background and the log will show the outcome."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:621
+msgid "Connect this integration before mapping its fields."
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:739
+msgid "Not connected"
+msgstr ""
+
+#: src/Modules/Integrations/Http/IntegrationController.php:833
+msgid "There is no integration by that name."
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:154
+msgid "Website"
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:155
+msgid "Score"
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:156
+msgid "Band"
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:158
+msgid "Pipeline stage"
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:159
+msgid "Captured by"
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:160
+msgid "Transcript"
+msgstr ""
+
+#. translators: %s: qualification question key.
+#: src/Modules/Integrations/Services/FieldMapper.php:179
+#, php-format
+msgid "Qualification: %s"
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:263
+msgid "Visitor"
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:264
+msgid "Clerk"
+msgstr ""
+
+#: src/Modules/Integrations/Services/FieldMapper.php:265
+msgid "Staff"
+msgstr ""
+
+#: src/Modules/Integrations/Services/IntegrationService.php:110
+#: src/Modules/Integrations/Services/IntegrationService.php:219
+msgid "That integration is not installed."
+msgstr ""
+
+#: src/Modules/Integrations/Services/IntegrationService.php:137
+msgid "Those credentials were refused."
+msgstr ""
+
+#: src/Modules/Integrations/Services/IntegrationService.php:225
+#: src/Modules/Integrations/Services/SyncService.php:180
+msgid "The stored credentials could not be refreshed. Reconnect this integration."
+msgstr ""
+
+#: src/Modules/Integrations/Services/OAuthService.php:124
+msgid "That integration does not use OAuth."
+msgstr ""
+
+#: src/Modules/Integrations/Services/OAuthService.php:134
+msgid "That authorisation has expired or was not started here. Try connecting again."
+msgstr ""
+
+#: src/Modules/Integrations/Services/OAuthService.php:140
+msgid "That authorisation was for a different integration."
+msgstr ""
+
+#: src/Modules/Integrations/Services/OAuthService.php:146
+msgid "That integration is no longer configured."
+msgstr ""
+
+#: src/Modules/Integrations/Services/OAuthService.php:157
+msgid "The provider refused the authorisation."
+msgstr ""
+
+#: src/Modules/Integrations/Services/SyncService.php:169
+msgid "That integration is no longer installed."
+msgstr ""
+
+#: src/Modules/Integrations/Services/SyncService.php:187
+msgid "The stored credentials could not be refreshed."
+msgstr ""
+
+#. translators: %s: connector name.
+#: src/Modules/Integrations/Services/SyncService.php:373
+#, php-format
+msgid "Synced to %s"
+msgstr ""
+
+#: src/Modules/KnowledgeBase/Services/IngestionService.php:125
+msgid "This licence has no indexed chunks left. Everything already indexed keeps working."
+msgstr ""
+
+#. translators: %s: chunk allowance, already formatted.
+#: src/Modules/KnowledgeBase/Services/IngestionService.php:160
+#, php-format
+msgid "Indexing stopped at this licence's %s-chunk allowance. Everything indexed so far is live."
+msgstr ""
+
+#: src/Modules/Leads/Http/LeadController.php:400
+msgid "An adjustment of zero would add a line to the breakdown and change nothing."
+msgstr ""
+
+#: src/Modules/Leads/Http/LeadController.php:456
+msgid "One of those leads does not exist."
+msgstr ""
+
+#: src/Modules/Leads/Http/LeadController.php:488
+msgid "Write something before saving the note."
+msgstr ""
+
+#. translators: %s: display name of the staff member.
+#: src/Modules/Leads/Http/LeadController.php:500
+#, php-format
+msgid "Note from %s"
+msgstr ""
+
+#: src/Modules/Leads/Http/LeadController.php:545
+msgid "That lead does not exist."
+msgstr ""
+
+#: src/Modules/Leads/Http/PipelineController.php:198
+#: src/Modules/Leads/Http/PipelineController.php:220
+msgid "That stage does not exist."
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadCaptureService.php:151
+msgid "Details picked up from the conversation"
+msgstr ""
+
+#. translators: %s: name of the clerk that captured the lead.
+#: src/Modules/Leads/Services/LeadCaptureService.php:290
+#, php-format
+msgid "Lead captured by %s"
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadNotifier.php:86
+msgid "Staff notified: lead crossed the alert threshold"
+msgstr ""
+
+#. translators: 1: lead name or email, 2: score.
+#: src/Modules/Leads/Services/LeadNotifier.php:130
+#, php-format
+msgid "%1$s scored %2$d and is worth a look."
+msgstr ""
+
+#. translators: %s: email address.
+#: src/Modules/Leads/Services/LeadNotifier.php:140
+#, php-format
+msgid "Email: %s"
+msgstr ""
+
+#. translators: %s: telephone number.
+#: src/Modules/Leads/Services/LeadNotifier.php:148
+#, php-format
+msgid "Phone: %s"
+msgstr ""
+
+#. translators: %s: company name.
+#: src/Modules/Leads/Services/LeadNotifier.php:156
+#, php-format
+msgid "Company: %s"
+msgstr ""
+
+#. translators: %s: link to the lead in the admin.
+#: src/Modules/Leads/Services/LeadNotifier.php:164
+#, php-format
+msgid "Open the lead: %s"
+msgstr ""
+
+#. translators: %s: lead name or email.
+#: src/Modules/Leads/Services/LeadNotifier.php:172
+#, php-format
+msgid "New qualified lead: %s"
+msgstr ""
+
+#. translators: 1: lead name or email, 2: score, 3: band, 4: admin link.
+#: src/Modules/Leads/Services/LeadNotifier.php:199
+#, php-format
+msgid "*%1$s* scored *%2$d* (%3$s) — %4$s"
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadService.php:86
+#: src/Modules/Leads/Services/LeadService.php:414
+msgid "That is not an email address."
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadService.php:91
+msgid "A lead with that email address already exists. Open it instead of creating a second one."
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadService.php:113
+msgid "Lead added by hand"
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadService.php:172
+#: src/Modules/Leads/Services/PipelineService.php:195
+msgid "That pipeline stage does not exist."
+msgstr ""
+
+#. translators: 1: previous stage name, 2: new stage name.
+#: src/Modules/Leads/Services/LeadService.php:199
+#, php-format
+msgid "Stage %1$s → %2$s"
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadService.php:200
+#: src/Modules/Leads/Services/LeadService.php:201
+msgid "unassigned"
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadService.php:240
+msgid "Pick two different leads to merge."
+msgstr ""
+
+#. translators: %s: name or email of the lead that was merged in.
+#: src/Modules/Leads/Services/LeadService.php:284
+#, php-format
+msgid "Merged %s into this lead"
+msgstr ""
+
+#. translators: 1: previous status, 2: new status.
+#: src/Modules/Leads/Services/LeadService.php:381
+#, php-format
+msgid "Status %1$s → %2$s"
+msgstr ""
+
+#: src/Modules/Leads/Services/LeadService.php:425
+msgid "Another lead already has that email address. Merge them instead."
+msgstr ""
+
+#: src/Modules/Leads/Services/PipelineService.php:83
+msgid "Give the stage a name."
+msgstr ""
+
+#. translators: %d: maximum number of pipeline stages.
+#: src/Modules/Leads/Services/PipelineService.php:90
+#, php-format
+msgid "A pipeline holds up to %d stages. Remove one before adding another."
+msgstr ""
+
+#: src/Modules/Leads/Services/PipelineService.php:150
+msgid "A stage cannot be both won and lost."
+msgstr ""
+
+#: src/Modules/Leads/Services/PipelineService.php:186
+msgid "A pipeline needs at least one stage. Add another before removing this one."
+msgstr ""
+
+#: src/Modules/Leads/Services/PipelineService.php:191
+msgid "Leads cannot be moved into the stage being deleted."
+msgstr ""
+
+#. translators: 1: previous score, 2: new score, 3: what awarded the points.
+#: src/Modules/Leads/Services/ScoringService.php:302
+#, php-format
+msgid "Score %1$d → %2$d · %3$s"
+msgstr ""
+
+#. translators: 1: page path, 2: ordinal count of the visit.
+#: src/Modules/Leads/Services/VisitorService.php:160
+#, php-format
+msgid "Viewed %1$s (%2$s)"
+msgstr ""
+
+#: src/Modules/Leads/Services/VisitorService.php:161
+msgid "a page"
+msgstr ""
+
+#: src/Modules/Onboarding/Services/SourceDetector.php:197
+msgid "Your sitemap"
+msgstr ""
+
+#: tools/dev-licence.php:162
+msgid "Hiveclerk dev licence is active."
+msgstr ""
+
+#. translators: %s: tier name.
+#: tools/dev-licence.php:166
+#, php-format
+msgid "Paid features are unlocked at the %s tier by a must-use plugin. Remove it to see what a real install sees."
+msgstr ""

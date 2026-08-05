@@ -19,6 +19,11 @@ export default tseslint.config(
         console: 'readonly',
         document: 'readonly',
         getComputedStyle: 'readonly',
+        // Declared for the bodies passed to page.evaluate() and
+        // addInitScript(): they are written here but execute inside the
+        // browser, where these exist and Node's globals do not.
+        window: 'readonly',
+        Response: 'readonly',
         __dirname: 'readonly',
         // Modern Node built-ins. The SSE probe reads a response stream
         // by hand and times each chunk's arrival, which needs all four.

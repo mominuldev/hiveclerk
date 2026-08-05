@@ -36,6 +36,10 @@ export interface Strings {
   captureDismiss: string;
   captureThanks: string;
   captureInvalid: string;
+  consentTitle: string;
+  consentAccept: string;
+  consentDecline: string;
+  consentDeclined: string;
 }
 
 const EN: Strings = {
@@ -67,6 +71,12 @@ const EN: Strings = {
   captureDismiss: 'Not now',
   captureThanks: "Thanks — we'll be in touch.",
   captureInvalid: "That doesn't look like an email address.",
+  consentTitle: 'Before we start',
+  consentAccept: 'I agree',
+  // Declining closes the panel rather than arguing. A gate whose only
+  // exit is agreement is not consent.
+  consentDecline: 'No thanks',
+  consentDeclined: 'No problem — nothing was recorded.',
 };
 
 /**

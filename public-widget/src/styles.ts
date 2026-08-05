@@ -408,6 +408,53 @@ button {
 .capture-send[disabled],
 .capture-dismiss[disabled] { opacity: 0.6; cursor: default; }
 
+.consent {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px;
+  margin: auto 0;
+}
+
+.consent-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--hvc-text);
+}
+
+.consent-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Both at the same weight, for the same reason as the capture card:
+   a decline styled as a whisper is not a decline the visitor can find. */
+.consent-actions button {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.consent-actions .primary {
+  color: #FFFFFF;
+  background: var(--hvc-brand);
+}
+
+.consent-actions .secondary {
+  color: var(--hvc-text-secondary);
+  background: transparent;
+  border-color: var(--hvc-border);
+}
+
+.consent-actions button:focus-visible {
+  outline: 2px solid var(--hvc-brand);
+  outline-offset: 2px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

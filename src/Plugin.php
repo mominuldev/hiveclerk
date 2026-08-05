@@ -158,6 +158,15 @@ final class Plugin {
 
 		$this->container->get( Core\Admin\AdminPage::class )->boot();
 
+		/*
+		 * Registered on every request, not just admin ones. WordPress runs
+		 * a privacy request from an admin-ajax callback and confirms it
+		 * from a front-end link in an email, and an exporter that only
+		 * existed inside wp-admin would be absent from half of that.
+		 */
+		$this->container->get( Core\Privacy\PersonalDataExporter::class )->register();
+		$this->container->get( Core\Privacy\PersonalDataEraser::class )->register();
+
 		$this->booted = true;
 
 		/**

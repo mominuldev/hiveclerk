@@ -33,6 +33,8 @@ import { Costs } from '@/routes/analytics/Costs';
 import { Gaps } from '@/routes/knowledge/Gaps';
 import { LicenceSettings } from '@/routes/settings/Licence';
 import { Branding } from '@/routes/settings/Branding';
+import { Privacy } from '@/routes/settings/Privacy';
+import { SystemStatus } from '@/routes/settings/SystemStatus';
 import { Wizard } from '@/routes/onboarding/Wizard';
 
 /*
@@ -141,6 +143,8 @@ export function App() {
               <Route path="providers" element={<Providers />} />
               <Route path="licence" element={<LicenceSettings />} />
               <Route path="branding" element={<Branding />} />
+              <Route path="privacy" element={<Privacy />} />
+              <Route path="system" element={<SystemStatus />} />
               <Route path="audit" element={<AuditLog />} />
             </Route>
 
