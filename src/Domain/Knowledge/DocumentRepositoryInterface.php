@@ -55,6 +55,19 @@ interface DocumentRepositoryInterface {
 	public function countForSource( int $sourceId ): int;
 
 	/**
+	 * Titles and URLs for several documents.
+	 *
+	 * Deliberately not find() in a loop. Documents carry a LONGTEXT column
+	 * holding the whole normalised page, and a citation header needs
+	 * neither it nor a query per result — five results on a site of long
+	 * pages is several megabytes read to display five headings.
+	 *
+	 * @param array<int, int> $ids Document ids.
+	 * @return array<int, array{title: string, url: string|null}> Keyed by id.
+	 */
+	public function titles( array $ids ): array;
+
+	/**
 	 * Every external id currently stored for a source.
 	 *
 	 * Read at the end of a sync to find documents the source no longer

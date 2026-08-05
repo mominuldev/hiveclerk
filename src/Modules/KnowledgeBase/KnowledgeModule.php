@@ -9,20 +9,31 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Modules\KnowledgeBase;
 
+use Hiveclerk\Ai\AiService;
 use Hiveclerk\Core\Capabilities\Capabilities;
 use Hiveclerk\Core\Container\Container;
 use Hiveclerk\Core\Module\AbstractModule;
 use Hiveclerk\Api\RestServer;
 use Hiveclerk\Core\Queue\JobRegistry;
 use Hiveclerk\Core\Queue\QueueInterface;
+use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Core\Audit\AuditLogger;
+use Hiveclerk\Modules\KnowledgeBase\Http\SearchController;
 use Hiveclerk\Modules\KnowledgeBase\Http\SourceController;
 use Hiveclerk\Database\Repositories\ChunkRepository;
 use Hiveclerk\Database\Repositories\DocumentRepository;
+use Hiveclerk\Database\Repositories\EmbeddingRepository;
 use Hiveclerk\Domain\Knowledge\ChunkRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\DocumentRepositoryInterface;
+use Hiveclerk\Domain\Knowledge\EmbeddingRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
+use Hiveclerk\Domain\Knowledge\VectorStoreInterface;
+use Hiveclerk\Modules\KnowledgeBase\Jobs\EmbedSourceJob;
+use Hiveclerk\Modules\KnowledgeBase\Services\EmbeddingService;
+use Hiveclerk\Modules\KnowledgeBase\Services\RetrievalService;
+use Hiveclerk\Modules\KnowledgeBase\Vector\MatrixCache;
+use Hiveclerk\Modules\KnowledgeBase\Vector\MysqlBlobVectorStore;
 use Hiveclerk\Modules\KnowledgeBase\Extractors\Crawl\PageFetcher;
 use Hiveclerk\Modules\KnowledgeBase\Extractors\Crawl\UrlNormaliser;
 use Hiveclerk\Modules\KnowledgeBase\Extractors\DocxExtractor;
@@ -129,10 +140,62 @@ final class KnowledgeModule extends AbstractModule {
 		);
 
 		$container->singleton(
+			EmbeddingRepositoryInterface::class,
+			static fn (): EmbeddingRepositoryInterface => new EmbeddingRepository()
+		);
+
+		$container->singleton( MatrixCache::class, static fn (): MatrixCache => new MatrixCache() );
+
+		/*
+		 * The binding the SaaS extraction turns on. Everything above this
+		 * line asks for VectorStoreInterface; swapping MysqlBlobVectorStore
+		 * for a Qdrant adapter is this one line and no service changes.
+		 */
+		$container->singleton(
+			VectorStoreInterface::class,
+			static fn ( Container $c ): VectorStoreInterface => new MysqlBlobVectorStore(
+				$c->get( EmbeddingRepositoryInterface::class ),
+				$c->get( MatrixCache::class )
+			)
+		);
+
+		$container->singleton(
+			EmbeddingService::class,
+			static fn ( Container $c ): EmbeddingService => new EmbeddingService(
+				$c->get( AiService::class ),
+				$c->get( SettingsRepository::class )
+			)
+		);
+
+		$container->singleton(
+			RetrievalService::class,
+			static fn ( Container $c ): RetrievalService => new RetrievalService(
+				$c->get( EmbeddingService::class ),
+				$c->get( VectorStoreInterface::class ),
+				$c->get( ChunkRepositoryInterface::class ),
+				$c->get( DocumentRepositoryInterface::class ),
+				$c->get( KnowledgeSourceRepositoryInterface::class )
+			)
+		);
+
+		$container->singleton(
 			IngestSourceJob::class,
 			static fn ( Container $c ): IngestSourceJob => new IngestSourceJob(
 				$c->get( IngestionService::class ),
-				$c->get( KnowledgeSourceRepositoryInterface::class )
+				$c->get( KnowledgeSourceRepositoryInterface::class ),
+				$c->get( QueueInterface::class )
+			)
+		);
+
+		$container->singleton(
+			EmbedSourceJob::class,
+			static fn ( Container $c ): EmbedSourceJob => new EmbedSourceJob(
+				$c->get( EmbeddingService::class ),
+				$c->get( VectorStoreInterface::class ),
+				$c->get( EmbeddingRepositoryInterface::class ),
+				$c->get( ChunkRepositoryInterface::class ),
+				$c->get( KnowledgeSourceRepositoryInterface::class ),
+				$c->get( QueueInterface::class )
 			)
 		);
 
@@ -145,6 +208,24 @@ final class KnowledgeModule extends AbstractModule {
 				$c->get( IngestionService::class ),
 				$c->get( ExtractorRegistry::class ),
 				$c->get( QueueInterface::class ),
+				$c->get( AuditLogger::class ),
+				$c->get( RateLimiter::class ),
+				$c->get( VectorStoreInterface::class ),
+				$c->get( EmbeddingRepositoryInterface::class ),
+				$c->get( EmbeddingService::class )
+			)
+		);
+
+		$container->singleton(
+			SearchController::class,
+			static fn ( Container $c ): SearchController => new SearchController(
+				$c->get( RetrievalService::class ),
+				$c->get( EmbeddingService::class ),
+				$c->get( VectorStoreInterface::class ),
+				$c->get( EmbeddingRepositoryInterface::class ),
+				$c->get( KnowledgeSourceRepositoryInterface::class ),
+				$c->get( AiService::class ),
+				$c->get( SettingsRepository::class ),
 				$c->get( AuditLogger::class ),
 				$c->get( RateLimiter::class )
 			)
@@ -161,6 +242,7 @@ final class KnowledgeModule extends AbstractModule {
 			'hiveclerk/jobs/register',
 			function ( JobRegistry $jobs ): void {
 				$jobs->add( $this->container->get( IngestSourceJob::class ) );
+				$jobs->add( $this->container->get( EmbedSourceJob::class ) );
 			}
 		);
 
@@ -168,6 +250,7 @@ final class KnowledgeModule extends AbstractModule {
 			'hiveclerk/rest/register',
 			function ( RestServer $server ): void {
 				$server->add( $this->container->get( SourceController::class ) );
+				$server->add( $this->container->get( SearchController::class ) );
 			}
 		);
 	}

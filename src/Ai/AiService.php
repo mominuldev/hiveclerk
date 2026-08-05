@@ -37,6 +37,8 @@ final class AiService {
 
 	private const MODEL_CACHE_PREFIX = 'hiveclerk_models_';
 
+	private const EMBED_MODEL_CACHE_PREFIX = 'hiveclerk_embed_models_';
+
 	/**
 	 * Construct.
 	 *
@@ -120,6 +122,104 @@ final class AiService {
 	}
 
 	/**
+	 * Turn a batch of texts into vectors and record what it cost.
+	 *
+	 * Routed through here for the same reason completions are: this is the
+	 * only place a provider call is metered, and indexing is the single
+	 * largest one-off charge the product makes on a customer's account. A
+	 * re-index that quietly spent forty dollars and appeared nowhere in
+	 * their cost report would be the kind of surprise that ends a trial.
+	 *
+	 * @param EmbeddingModel     $pin     Pinned provider and model.
+	 * @param array<int, string> $texts   Inputs, in order.
+	 * @param int                $timeout Seconds.
+	 * @return EmbeddingBatch
+	 *
+	 * @throws ProviderException When the provider cannot embed or the call fails.
+	 */
+	public function embed( EmbeddingModel $pin, array $texts, int $timeout = 60 ): EmbeddingBatch {
+		$provider = $this->embedder( $pin->provider );
+
+		$batch = $provider->embed(
+			$this->keys->credentials( $pin->provider ),
+			$texts,
+			$pin->model,
+			$timeout
+		);
+
+		$this->meterEmbedding( $batch );
+
+		return $batch;
+	}
+
+	/**
+	 * The embedding adapter for a provider.
+	 *
+	 * @param string $providerId Provider identifier.
+	 * @return EmbeddingProviderInterface
+	 *
+	 * @throws ProviderException When the provider is unknown or cannot embed.
+	 */
+	public function embedder( string $providerId ): EmbeddingProviderInterface {
+		$provider = $this->registry->get( $providerId );
+
+		if ( ! $provider instanceof EmbeddingProviderInterface ) {
+			throw new ProviderException(
+				sprintf( '%s does not offer an embedding model.', $provider->label() ),
+				$providerId,
+				409
+			);
+		}
+
+		return $provider;
+	}
+
+	/**
+	 * Whether a provider can embed and has a usable key.
+	 *
+	 * @param string $providerId Provider identifier.
+	 * @return bool
+	 */
+	public function canEmbed( string $providerId ): bool {
+		return $this->registry->has( $providerId )
+			&& $this->registry->get( $providerId ) instanceof EmbeddingProviderInterface
+			&& $this->keys->isConfigured( $providerId );
+	}
+
+	/**
+	 * Every configured provider that can produce vectors.
+	 *
+	 * @return array<int, string> Provider identifiers.
+	 */
+	public function embedders(): array {
+		return array_values( array_filter( $this->registry->ids(), fn ( string $id ): bool => $this->canEmbed( $id ) ) );
+	}
+
+	/**
+	 * Embedding models a provider offers.
+	 *
+	 * @param string $providerId Provider identifier.
+	 * @return array<int, Model>
+	 *
+	 * @throws ProviderException When the provider cannot be reached.
+	 */
+	public function embeddingModels( string $providerId ): array {
+		$provider = $this->embedder( $providerId );
+		$key      = self::EMBED_MODEL_CACHE_PREFIX . $providerId;
+		$cached   = get_transient( $key );
+
+		if ( is_array( $cached ) ) {
+			return array_values( array_filter( $cached, static fn ( $m ): bool => $m instanceof Model ) );
+		}
+
+		$models = $provider->embeddingModels( $this->keys->credentials( $providerId ) );
+
+		set_transient( $key, $models, self::MODEL_CACHE_TTL );
+
+		return $models;
+	}
+
+	/**
 	 * Models available to a provider's stored credentials.
 	 *
 	 * @param string $providerId Provider identifier.
@@ -158,6 +258,7 @@ final class AiService {
 	 */
 	public function forgetModels( string $providerId ): void {
 		delete_transient( self::MODEL_CACHE_PREFIX . $providerId );
+		delete_transient( self::EMBED_MODEL_CACHE_PREFIX . $providerId );
 	}
 
 	/**
@@ -241,6 +342,41 @@ final class AiService {
 		 * @param Completion $completion The call it came from.
 		 */
 		do_action( 'hiveclerk/usage/recorded', $event, $completion );
+	}
+
+	/**
+	 * Write a usage record for a completed embedding call.
+	 *
+	 * @param EmbeddingBatch $batch Result.
+	 * @return void
+	 */
+	private function meterEmbedding( EmbeddingBatch $batch ): void {
+		$event = new UsageEvent(
+			kind: UsageKind::Embedding,
+			provider: $batch->provider,
+			model: $batch->model,
+			tokensIn: $batch->tokensIn,
+			tokensOut: 0,
+			// A provider that reports no token count leaves the cost
+			// unknown, not zero. Gemini's batch endpoint is the case that
+			// matters: computing a price from a token count of zero would
+			// record every indexing run on that provider as free, and the
+			// month's spend would be understated by the whole of it.
+			cost: $batch->tokensIn > 0
+				? $this->pricing->cost( $batch->provider, $batch->model, $batch->tokensIn )
+				: null,
+			latencyMs: $batch->latencyMs > 0 ? $batch->latencyMs : null
+		);
+
+		$this->usage->record( $event );
+
+		/**
+		 * Fires after an embedding call is metered.
+		 *
+		 * @param UsageEvent     $event Recorded event.
+		 * @param EmbeddingBatch $batch The call it came from.
+		 */
+		do_action( 'hiveclerk/usage/embedded', $event, $batch );
 	}
 
 	/**

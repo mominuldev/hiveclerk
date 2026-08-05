@@ -6,6 +6,203 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Sprint 4 — Retrieval ⚑ M1 gate
+
+**Goal:** prove the architecture's riskiest bet — that useful semantic
+search fits inside a shared host's request budget.
+
+#### Added
+
+- **`EmbeddingService`** (FR-KB-07, TD-6). Ninety-six inputs per call;
+  retry that distinguishes a 429 from a 401, because one belongs back on
+  the queue with backoff and the other belongs on the operator's screen;
+  and, on a size rejection, the batch is **halved and each half retried**
+  so one oversized chunk costs one chunk rather than ninety-six.
+- **Embeddings behind their own port.** `EmbeddingProviderInterface` is
+  separate from `LlmProviderInterface` because Anthropic offers no
+  embedding model at all and OpenRouter has no embeddings endpoint —
+  folding the method into the chat interface would force three adapters
+  to carry a method that throws. Implemented for OpenAI, Azure OpenAI
+  (sharing OpenAI's wire shape through a trait) and Google Gemini.
+- **`BinaryQuantiser`** — one bit per dimension, 1,536 floats down from
+  6,144 bytes to 192. Hamming distance runs through `gmp_popcount()` where
+  ext-gmp exists and otherwise through `count_chars()`, which collapses a
+  192-byte row to its distinct byte values *in C* so the PHP-level loop is
+  an order of magnitude shorter than one iteration per byte. Both paths
+  are asserted against a naive reference for all 256 byte values.
+- **`MysqlBlobVectorStore` behind `VectorStoreInterface`** (TD-1) — the
+  seam the V3 SaaS extraction turns on, and one line in the container.
+  Below 500 chunks it skips the coarse pass entirely and scans exactly,
+  because at that size the machinery costs more than it saves.
+- **`MatrixCache`** — object cache with a transient fallback, and
+  invalidation by **per-source generation number** rather than by key. A
+  source set is any combination of sources, so there is no bounded list of
+  keys to delete when one source re-indexes; bumping a generation makes
+  every key mentioning that source unreachable at once.
+- **`RetrievalService`** — stage 1 Hamming, stage 2 exact cosine, stage 3
+  reciprocal rank fusion against MySQL `FULLTEXT`. A provider outage
+  degrades the search to keyword-only rather than failing the visitor's
+  message, and says so in the diagnostics.
+- **`EmbedSourceJob`** — bounded batches that re-enqueue while work
+  remains. "Which chunks have no vector" is a **query, not a cursor**,
+  which is what makes the job idempotent under the conditions it actually
+  runs in: a cron overlap, a manual retry, a host that ran the same
+  scheduled action twice.
+- REST: `POST /admin/knowledge/search` with full stage diagnostics,
+  `GET /admin/knowledge/retrieval`, and `GET`/`PUT
+  /admin/knowledge/embedding`.
+- **Knowledge gains tabs** — Sources, Playground, Embedding. The
+  **retrieval playground** (FR-KB-12, D11 §7.4) shows per-stage timings,
+  every score that produced each position, and the threshold line drawn
+  across the results at the point a clerk will stop reading.
+- `tools/retrieval-bench.php` and `tools/retrieval-eval.php` — the M1
+  benchmark and the end-to-end evaluation harness.
+
+#### Fixed
+
+- **The transient fallback silently never worked.** With no persistent
+  object cache the quantised matrix is written to a transient, which is an
+  option row, which is a `utf8mb4 LONGTEXT` column — so
+  `wpdb::strip_invalid_text_for_column()` removed the byte sequences that
+  are not valid UTF-8, shortening a string inside an already-serialised
+  payload and making `unserialize()` fail on a length prefix that no
+  longer matched. Silent in both directions: the write reported success
+  and the read reported a cache miss, so the matrix was rebuilt from the
+  database on **every single request** and nothing anywhere said so. Found
+  by the benchmark's cross-request measurement reporting `matrix from
+  database` at every corpus size, then confirmed directly — a 4 KB random
+  payload written through `set_transient()` came back as `false`. The
+  payload is now base64-encoded on that path. Measured after: the
+  10,000-chunk steady state fell from **122 ms to 34 ms**.
+
+#### Decisions worth recording
+
+- **The confidence threshold gates the cosine, not the fused score.** The
+  fused score answers "which of these should be first"; it does not answer
+  "is any of this actually about the question" — a chunk ranked first by
+  both signals fuses high even when both signals thought it a poor match.
+  The knowledge-gaps report depends on this: its whole purpose is spotting
+  questions where the best match was weak.
+- **Fusion combines ranks, not scores.** A cosine is bounded to [-1, 1];
+  MySQL's `FULLTEXT` relevance is unbounded and its scale moves with
+  corpus size. Any mapping between them is a weighting decision disguised
+  as arithmetic, and it re-weights itself as the customer's content grows.
+- **The fused score is reported as the raw RRF value**, not normalised to
+  look like a similarity. This departs from the wireframe, which shows
+  fused scores on a 0–1 scale beside the cosine. Manufacturing that number
+  would make a rank-combination look like a probability, in the one screen
+  built to stop people misreading retrieval.
+- **`FULLTEXT` runs in natural-language mode, not boolean mode.** Boolean
+  mode gives the query string operator meaning — a leading `-` excludes,
+  `"` groups — so a visitor asking about "e-bikes" or typing an unbalanced
+  quote gets nothing back or a syntax error from MySQL.
+- **The embedding pin is read from the source, not from settings.**
+  Settings say what the *next* index run will use; the vectors on disk
+  were produced by whatever was configured when they were written.
+- **Changing the embedding model flags sources; it does not delete
+  vectors.** Deleting would leave the customer with a clerk that knows
+  nothing until a re-index they did not ask for finishes. The old vectors
+  stay searchable through their own pin while the operator decides when to
+  spend the money.
+- **Writing the embedding model needs `manage_settings`, reading it needs
+  `manage_knowledge`.** The change invalidates every vector on the site
+  and bills a full re-index to the customer's provider account, which is a
+  spending decision rather than a content one — and `shop_manager` holds
+  the second capability but not the first.
+- **The index holds 2,048 dimensions,** because `embedding_bits` is
+  `VARBINARY(256)` and widening it widens the hot scan proportionally.
+  `text-embedding-3-large` and `gemini-embedding-001` are 3,072 natively
+  and both are Matryoshka-trained, so they are *asked* for a shorter
+  vector rather than refused. A model that cannot truncate and does not
+  fit is rejected with a message naming the width.
+- **Gemini's batch embedding endpoint reports no token count, so the cost
+  is recorded as unknown rather than zero** — the same reasoning that made
+  `usage_events.cost` nullable in Sprint 2.
+- **The benchmark corpus is clustered, and the uniform one is reported
+  separately as an adversarial floor.** Independent random vectors in
+  1,536 dimensions are all near-orthogonal — every pairwise cosine within
+  about 0.026 of zero — so the "top 5" differ from the 500th in the third
+  decimal, and asking a one-bit approximation to resolve that is asking
+  for something no real query needs. Real content forms topical clusters;
+  the benchmark now prints the best-versus-median cosine margin beside
+  every recall figure so a low number can be attributed to the corpus
+  rather than the code.
+
+#### Verified — M1 gate
+
+`wp eval-file tools/retrieval-bench.php 1000,10000,50000 30`, PHP 8.4.7,
+MySQL 8, **no persistent object cache**, GMP available.
+
+| Corpus | recall@5 | warm p95 | next request | peak |
+|---|---:|---:|---:|---:|
+| 1,000 clustered | 1.000 | 35 ms | 28 ms · transient | 75 MB |
+| **10,000 clustered ⚑** | **1.000** | **35 ms** | **34 ms · transient** | **89 MB** |
+| 50,000 clustered | 1.000 | 109 ms | 1,122 ms · **not cached** | 113 MB |
+
+**M1 met at the scale it is defined at.** Recall@5 ≥ 0.90 ✅ · ≤ 300 ms p95
+at 10k ✅ · ≤ 96 MB peak ✅. Stage 1 costs 6.9 ms and stage 2 25.1 ms at
+10,000 chunks; the cold matrix build is 128 ms and happens once per cache
+TTL, not per request.
+
+- Adversarial uniform corpus, same code: 0.920 at 1k, 0.800 at 10k, 0.660
+  at 50k — reported, not gated, for the reason above.
+- float32 round trip through the BLOB column: maximum component drift
+  1.49 × 10⁻⁸, spot-checked against vectors regenerated from their seeds
+  rather than against the storage layer that wrote them.
+- The coarse pass keeps the true nearest neighbour: asserted as a property
+  over a 400-vector corpus with a planted neighbour, not as a fixture.
+- 184 unit tests, 1,144 assertions. 7 integration tests.
+- SEC-04: 22/22 routes gated. PHPStan L8, PHPCS, `tsc`, ESLint all clean.
+  Admin bundle 132.46 kB gzipped against 350 kB.
+- Playground and Embedding screens measured in both themes with
+  Playwright, including the keyword-only degradation path end to end — a
+  search with no embedding key returns FULLTEXT results, names the
+  degradation, and draws the threshold line below everything.
+
+#### Not delivered this sprint
+
+- **The crawl preview screen** (D11 §7.2, R-3), carried from Sprint 3, is
+  still not built. The cost half now exists —
+  `EmbeddingService::estimateCost()` prices a token count against the
+  pinned model, and the sources list shows what each source actually cost
+  to index — but the screen in the wireframe also lists the URLs that
+  would be crawled and why each was skipped, and `ExtractorInterface` has
+  no method that returns that. It needs a `preview()` on the extractor,
+  which is real work and was not in this sprint's budget.
+- **The FAQ editor UI**, carried from Sprint 3, is still API-only.
+
+#### Known gaps
+
+- **End-to-end retrieval recall has not been measured.** The harness is
+  written and runs, but this development site has no embedding-capable
+  provider key (only OpenRouter is configured, which has no embeddings
+  endpoint) and a two-chunk corpus. What *has* been measured is
+  quantisation recall — how much the coarse pass costs against an exact
+  scan of the same vectors — which isolates this sprint's contribution and
+  says nothing about how well a given embedding model understands a
+  customer's prose. **The M1 recall criterion should not be considered
+  closed until `tools/retrieval-eval.php` has run against a real corpus
+  with a real key.**
+- **Above roughly 16,000 chunks a site without a persistent object cache
+  has no vector cache at all.** The base64 payload passes the 4 MB
+  transient ceiling and the matrix is rebuilt from the database on every
+  message — 1.1 seconds at 50,000 chunks, against a 300 ms budget. This is
+  the degradation the scaling ladder in D6 §4.5 predicts, and the answer
+  it names is per-source partitioned matrices, which is not V1 work. The
+  status page and the playground both say so in words; the 50,000-chunk
+  tier should not be sold without Redis until they exist.
+- The Azure and Google embedding adapters have never been run against
+  their live APIs. Azure's is worse than untested: it has no way to know
+  which deployments are embedding endpoints, so it guesses from the
+  deployment name and says it is guessing.
+- `EmbedSourceJob` has been exercised through its unit-level pieces and
+  through a manual vector seed, not through a full Action Scheduler run
+  against a real provider.
+- The 200-question evaluation set named in the sprint plan does not exist
+  as a curated artefact. `probe` mode generates questions from the corpus
+  and is explicitly labelled an upper bound, because a question derived
+  from a chunk shares vocabulary with it and a real visitor's does not.
+
 ### Sprint 3 — Ingestion and the SSE spike
 
 **Goal:** get content into the database as chunks. De-risk streaming early.

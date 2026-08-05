@@ -21,3 +21,17 @@ if ( ! defined( 'HIVECLERK_VERSION' ) ) {
 if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', '/tmp/wordpress/' );
 }
+
+/*
+ * WordPress's time constants. Several classes use them in class-constant
+ * expressions, which PHP evaluates on first access rather than at load —
+ * so a unit test that only touches the arithmetic still needs them
+ * defined, and defining them is cheaper than restructuring the constants
+ * to hide a dependency the production code genuinely has.
+ */
+if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {
+	define( 'MINUTE_IN_SECONDS', 60 );
+	define( 'HOUR_IN_SECONDS', 3600 );
+	define( 'DAY_IN_SECONDS', 86400 );
+	define( 'WEEK_IN_SECONDS', 604800 );
+}

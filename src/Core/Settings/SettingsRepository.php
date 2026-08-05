@@ -114,6 +114,16 @@ final class SettingsRepository {
 	 */
 	private function defaults(): array {
 		return array(
+			// Left empty rather than defaulted to a provider. Which
+			// embedding model a site uses decides what its vectors mean,
+			// and guessing on the operator's behalf would pin a choice they
+			// never made to content they cannot then search with anything
+			// else. EmbeddingService falls back to the first configured
+			// provider and records what it used.
+			'retrieval'  => array(
+				'embed_provider' => null,
+				'embed_model'    => null,
+			),
 			'privacy'    => array(
 				'retention_months' => 12,
 				'anonymise_ip'     => true,

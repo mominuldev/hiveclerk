@@ -84,10 +84,10 @@ before the work depending on it could be trusted.
 |---|---|---|
 | **0** | Scaffold + CI | ✅ **Complete — all gates green** |
 | **1** | Migrations, repositories, REST, auth | ✅ **Complete — M0 reached** |
-| 2 | Provider adapters, design system, settings | ⬜ Next |
-| 3 | Ingestion pipeline + SSE host spike | ⬜ |
-| 4 | Vector store + retrieval (**M1 gate**) | ⬜ |
-| 5 | Chat + widget (**M2 gate**) | ⬜ |
+| **2** | Provider adapters, design system, settings | ✅ **Complete** |
+| **3** | Ingestion pipeline + SSE host spike | ✅ **Complete — TD-2 confirmed** |
+| **4** | Vector store + retrieval (**M1 gate**) | ⚠️ **Complete — M1 met on latency and memory; recall measured for quantisation only** |
+| 5 | Chat + widget (**M2 gate**) | ⬜ Next |
 | 6–10 | See [Sprint Plan](14-sprint-plan.md) | ⬜ |
 
 **Sprint 0 verification** — run `composer check` and `npm run check`:
@@ -137,6 +137,27 @@ before the work depending on it could be trusted.
 | PHPStan L8 + PHPCS + `tsc` + ESLint | ✅ clean |
 | size-limit | ✅ 125.57 kB gzipped / 350 kB |
 | Both themes rendered and measured | ✅ Playwright, no wp-admin bleed |
+
+**Sprint 4 verification (M1 — retrieval)**
+
+Measured with `wp eval-file tools/retrieval-bench.php 1000,10000,50000 30`
+on PHP 8.4.7 / MySQL 8, **without** a persistent object cache.
+
+| Gate | Result |
+|---|---|
+| **M1 · recall@5 ≥ 0.90 at 10k** | ⚠️ **1.000 for quantisation** — end-to-end recall against real questions is **not yet measured** (no embedding key on this site) |
+| **M1 · ≤ 300 ms p95 at 10k** | ✅ 35 ms warm · 34 ms on a fresh request · 128 ms cold build |
+| **M1 · ≤ 96 MB peak** | ✅ 89 MB at 10k |
+| Stage split at 10k | ✅ stage 1 6.9 ms · stage 2 25.1 ms · fusion under 1 ms |
+| float32 BLOB round trip | ✅ max drift 1.49 × 10⁻⁸ against regenerated vectors |
+| Coarse pass keeps the true nearest neighbour | ✅ property test, planted neighbour in a 400-vector corpus |
+| Adversarial uniform corpus (reported, not gated) | 0.920 @ 1k · 0.800 @ 10k · 0.660 @ 50k |
+| 50,000 chunks without Redis | 🔴 index uncacheable above ~16k chunks → 1.1 s per search |
+| SEC-04 route gating | ✅ 22/22 routes gated |
+| PHPUnit | ✅ 184 unit (1,144 assertions) + 7 integration |
+| PHPStan L8 + PHPCS + `tsc` + ESLint | ✅ clean |
+| size-limit | ✅ 132.46 kB gzipped / 350 kB |
+| Playground + Embedding in both themes | ✅ Playwright, incl. the keyword-only degradation path |
 
 ---
 

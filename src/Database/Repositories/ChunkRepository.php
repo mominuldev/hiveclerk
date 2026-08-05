@@ -106,6 +106,62 @@ final class ChunkRepository extends AbstractRepository implements ChunkRepositor
 		return $this->forDocument( $documentId );
 	}
 
+	public function searchKeyword( string $query, array $sourceIds, int $limit ): array {
+		$sourceIds = array_values( array_unique( array_filter( array_map( 'intval', $sourceIds ) ) ) );
+		$query     = trim( $query );
+
+		if ( array() === $sourceIds || '' === $query ) {
+			return array();
+		}
+
+		$table        = $this->tableName();
+		$placeholders = implode( ', ', array_fill( 0, count( $sourceIds ), '%d' ) );
+
+		/*
+		 * Natural-language mode, not boolean mode. Boolean mode gives the
+		 * query string operator meaning — a leading `-` excludes, `*`
+		 * truncates, `"` groups — so a visitor asking about "e-bikes" or
+		 * typing an unbalanced quote either gets nothing back or gets a
+		 * syntax error from MySQL. Natural-language mode treats the whole
+		 * string as text, which is what a question is.
+		 *
+		 * The relevance figure InnoDB returns is its BM25 variant. It is
+		 * unbounded and not comparable to a cosine similarity, which is
+		 * why fusion combines ranks rather than scores.
+		 */
+		$sql = $this->db->prepare(
+			"SELECT id, MATCH(content) AGAINST(%s IN NATURAL LANGUAGE MODE) AS score
+			 FROM `{$table}`
+			 WHERE source_id IN ({$placeholders})
+			   AND MATCH(content) AGAINST(%s IN NATURAL LANGUAGE MODE)
+			 ORDER BY score DESC
+			 LIMIT %d",
+			...array_merge( array( $query ), $sourceIds, array( $query, max( 1, $limit ) ) )
+		);
+
+		if ( ! is_string( $sql ) ) {
+			return array();
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $this->db->get_results( $sql, ARRAY_A );
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$matches = array();
+
+		foreach ( $rows as $row ) {
+			$matches[] = array(
+				'chunk_id' => (int) ( $row['id'] ?? 0 ),
+				'score'    => (float) ( $row['score'] ?? 0.0 ),
+			);
+		}
+
+		return $matches;
+	}
+
 	public function countForSource( int $sourceId ): int {
 		return $this->countWhere( 'source_id = %d', array( $sourceId ) );
 	}

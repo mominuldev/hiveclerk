@@ -29,6 +29,10 @@ export interface KnowledgeSource {
   document_count: number;
   chunk_count: number;
   token_count: number;
+  vector_count: number;
+  is_searchable: boolean;
+  embedding: { provider: string; model: string; dimensions: number } | null;
+  index_cost: number | null;
   sync_schedule: string;
   last_synced_at: string | null;
   last_error: string | null;

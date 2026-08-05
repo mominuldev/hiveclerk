@@ -56,6 +56,21 @@ interface ChunkRepositoryInterface {
 	public function replaceForDocument( int $documentId, array $chunks ): array;
 
 	/**
+	 * Rank chunks against a query by keyword relevance.
+	 *
+	 * The half of retrieval that vectors are bad at. An embedding is a
+	 * summary of meaning and is reliably vague about exact tokens — a part
+	 * number, a policy name, a European shoe size — where a keyword index
+	 * is exact and cheap. Fusing the two covers each one's failure.
+	 *
+	 * @param string          $query     Raw user query.
+	 * @param array<int, int> $sourceIds Sources to search.
+	 * @param int             $limit     Rows to return.
+	 * @return array<int, array{chunk_id: int, score: float}> Best first.
+	 */
+	public function searchKeyword( string $query, array $sourceIds, int $limit ): array;
+
+	/**
 	 * Count chunks in a source.
 	 *
 	 * @param int $sourceId Source.

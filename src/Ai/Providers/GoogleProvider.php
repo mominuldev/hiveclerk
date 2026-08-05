@@ -12,8 +12,11 @@ namespace Hiveclerk\Ai\Providers;
 use Hiveclerk\Ai\Completion;
 use Hiveclerk\Ai\CompletionRequest;
 use Hiveclerk\Ai\Credentials;
+use Hiveclerk\Ai\EmbeddingBatch;
+use Hiveclerk\Ai\EmbeddingProviderInterface;
 use Hiveclerk\Ai\Model;
 use Hiveclerk\Ai\ProviderCapabilities;
+use Hiveclerk\Ai\ProviderException;
 use Hiveclerk\Ai\ProviderId;
 use Hiveclerk\Ai\StreamEvent;
 use Hiveclerk\Ai\Streaming\SseFrame;
@@ -32,9 +35,30 @@ use Hiveclerk\Ai\Streaming\StreamState;
  * in any Referer header the request produces — three copies of the
  * customer's credential written to disk by systems we do not control.
  */
-final class GoogleProvider extends AbstractProvider {
+final class GoogleProvider extends AbstractProvider implements EmbeddingProviderInterface {
 
 	private const BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+	/**
+	 * Embedding models offered, with the width Hiveclerk asks for.
+	 *
+	 * `gemini-embedding-001` is 3,072 dimensions natively and accepts an
+	 * `outputDimensionality` parameter, which is used to bring it inside
+	 * the 2,048-bit quantised column.
+	 *
+	 * @var array<string, int>
+	 */
+	private const EMBEDDING_MODELS = array(
+		'text-embedding-004'   => 768,
+		'gemini-embedding-001' => 2048,
+	);
+
+	/**
+	 * Inputs per batchEmbedContents call.
+	 *
+	 * Google's documented ceiling is 100 requests per batch.
+	 */
+	private const EMBED_BATCH = 96;
 
 	/**
 	 * Identifier.
@@ -123,6 +147,149 @@ final class GoogleProvider extends AbstractProvider {
 		}
 
 		return $models;
+	}
+
+	/**
+	 * Embedding models offered.
+	 *
+	 * @param Credentials $credentials Credentials.
+	 * @return array<int, Model>
+	 */
+	public function embeddingModels( Credentials $credentials ): array {
+		unset( $credentials );
+
+		$models = array();
+
+		foreach ( self::EMBEDDING_MODELS as $id => $dimensions ) {
+			$models[] = Model::embedding( $id, $id, $dimensions, $this->pricing( $id ) );
+		}
+
+		return $models;
+	}
+
+	/**
+	 * Default embedding model.
+	 *
+	 * @return string
+	 */
+	public function defaultEmbeddingModel(): string {
+		return 'text-embedding-004';
+	}
+
+	/**
+	 * Inputs per call.
+	 *
+	 * @return int
+	 */
+	public function maxBatchSize(): int {
+		return self::EMBED_BATCH;
+	}
+
+	/**
+	 * Embed a batch through batchEmbedContents.
+	 *
+	 * @param Credentials        $credentials Credentials.
+	 * @param array<int, string> $texts       Inputs, in order.
+	 * @param string             $model       Model identifier.
+	 * @param int                $timeout     Seconds.
+	 * @return EmbeddingBatch
+	 *
+	 * @throws ProviderException When the call fails or the batch is short.
+	 */
+	public function embed(
+		Credentials $credentials,
+		array $texts,
+		string $model,
+		int $timeout = 60
+	): EmbeddingBatch {
+		$this->assertConfigured( $credentials );
+
+		$texts = array_values( $texts );
+
+		if ( array() === $texts ) {
+			return new EmbeddingBatch( array(), $this->id(), $model );
+		}
+
+		$short     = self::shortName( $model );
+		$qualified = 'models/' . $short;
+		$width     = self::EMBEDDING_MODELS[ $short ] ?? null;
+		$started   = microtime( true );
+
+		$requests = array();
+
+		foreach ( $texts as $text ) {
+			$request = array(
+				'model'    => $qualified,
+				'content'  => array( 'parts' => array( array( 'text' => $text ) ) ),
+				// Retrieval quality depends on this being right. Gemini
+				// embeds a document and a question differently, and using
+				// the document task type for both costs measurable recall
+				// for no saving.
+				'taskType' => 'RETRIEVAL_DOCUMENT',
+			);
+
+			if ( null !== $width ) {
+				$request['outputDimensionality'] = $width;
+			}
+
+			$requests[] = $request;
+		}
+
+		$json = $this->send(
+			$credentials,
+			'POST',
+			sprintf( '%s/models/%s:batchEmbedContents', self::BASE, rawurlencode( $short ) ),
+			array( 'requests' => $requests ),
+			$timeout
+		);
+
+		$data = $json['embeddings'] ?? array();
+
+		if ( ! is_array( $data ) ) {
+			throw new ProviderException(
+				sprintf( '%s returned no embedding data.', $this->label() ),
+				$this->id(),
+				502
+			);
+		}
+
+		$vectors = array();
+
+		foreach ( $data as $entry ) {
+			if ( ! is_array( $entry ) || ! isset( $entry['values'] ) || ! is_array( $entry['values'] ) ) {
+				continue;
+			}
+
+			$vectors[] = array_map( 'floatval', array_values( $entry['values'] ) );
+		}
+
+		if ( count( $vectors ) !== count( $texts ) ) {
+			// batchEmbedContents has no index field, so position is the
+			// only correspondence there is. A short response cannot be
+			// realigned; it can only be refused.
+			throw new ProviderException(
+				sprintf(
+					'%s returned %d vectors for %d inputs.',
+					$this->label(),
+					count( $vectors ),
+					count( $texts )
+				),
+				$this->id(),
+				502
+			);
+		}
+
+		return new EmbeddingBatch(
+			vectors: $vectors,
+			provider: $this->id(),
+			model: $short,
+			// Gemini reports no token usage on this endpoint. Left at zero
+			// rather than estimated: the cost report distinguishes unpriced
+			// calls from free ones, and an invented figure would be
+			// indistinguishable from a measured one.
+			tokensIn: 0,
+			latencyMs: self::elapsedMs( $started )
+		);
 	}
 
 	/**

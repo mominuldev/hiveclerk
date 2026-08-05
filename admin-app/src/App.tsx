@@ -7,6 +7,9 @@ import { Settings } from '@/routes/settings/Settings';
 import { Providers } from '@/routes/settings/Providers';
 import { AuditLog } from '@/routes/settings/AuditLog';
 import { Knowledge } from '@/routes/knowledge/Knowledge';
+import { KnowledgeShell } from '@/routes/knowledge/KnowledgeShell';
+import { Playground } from '@/routes/knowledge/Playground';
+import { EmbeddingSettings } from '@/routes/knowledge/EmbeddingSettings';
 
 /*
  * A hash router avoids rewrite rules and server configuration entirely,
@@ -74,7 +77,15 @@ export function App() {
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="knowledge" element={<Knowledge />} />
+            <Route path="knowledge" element={<KnowledgeShell />}>
+              {/* Redirect rather than an index element, so the tab bar
+                  always has an active tab and a bookmarked /knowledge
+                  still lands somewhere nameable. */}
+              <Route index element={<Navigate to="sources" replace />} />
+              <Route path="sources" element={<Knowledge />} />
+              <Route path="playground" element={<Playground />} />
+              <Route path="embedding" element={<EmbeddingSettings />} />
+            </Route>
 
             <Route path="settings" element={<Settings />}>
               <Route index element={<Navigate to="providers" replace />} />

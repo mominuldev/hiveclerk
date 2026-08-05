@@ -25,9 +25,14 @@ use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\SourceStatus;
 use Hiveclerk\Domain\Knowledge\SourceType;
 use Hiveclerk\Domain\Shared\Uuid;
+use Hiveclerk\Ai\EmbeddingModel;
+use Hiveclerk\Domain\Knowledge\EmbeddingRepositoryInterface;
+use Hiveclerk\Domain\Knowledge\VectorStoreInterface;
 use Hiveclerk\Modules\KnowledgeBase\Extractors\ExtractorRegistry;
 use Hiveclerk\Modules\KnowledgeBase\Extractors\FaqExtractor;
+use Hiveclerk\Modules\KnowledgeBase\Jobs\EmbedSourceJob;
 use Hiveclerk\Modules\KnowledgeBase\Jobs\IngestSourceJob;
+use Hiveclerk\Modules\KnowledgeBase\Services\EmbeddingService;
 use Hiveclerk\Modules\KnowledgeBase\Services\IngestionProgress;
 use Hiveclerk\Modules\KnowledgeBase\Services\IngestionService;
 use WP_Error;
@@ -70,6 +75,9 @@ final class SourceController extends AbstractController {
 	 * @param QueueInterface                     $queue      Background queue.
 	 * @param AuditLogger                        $audit      Audit log.
 	 * @param RateLimiter                        $limiter    Rate limiter.
+	 * @param VectorStoreInterface               $vectors    Vector store.
+	 * @param EmbeddingRepositoryInterface       $stored     Vector persistence.
+	 * @param EmbeddingService                   $embeddings Embedding.
 	 */
 	public function __construct(
 		private readonly KnowledgeSourceRepositoryInterface $sources,
@@ -80,6 +88,9 @@ final class SourceController extends AbstractController {
 		private readonly QueueInterface $queue,
 		private readonly AuditLogger $audit,
 		private readonly RateLimiter $limiter,
+		private readonly VectorStoreInterface $vectors,
+		private readonly EmbeddingRepositoryInterface $stored,
+		private readonly EmbeddingService $embeddings,
 	) {
 	}
 
@@ -390,10 +401,18 @@ final class SourceController extends AbstractController {
 		// job carry on writing documents against a row that no longer
 		// exists.
 		$this->ingestion->cancel( $id );
-		$this->queue->cancel( IngestSourceJob::hook(), array( 'source_id' => $id ) );
+		$this->stopJobs( $id );
 
 		$this->documents->deleteForSource( $id );
+		$this->chunks->deleteForSource( $id );
+		$this->stored->deleteForSource( $id );
 		$this->sources->delete( $id );
+
+		// The cached matrix is keyed on a source set, not a source, so a
+		// deleted source is still inside every cached combination that
+		// mentioned it. Left alone, retrieval would keep scanning — and
+		// citing — content the customer has just removed.
+		$this->vectors->invalidate( array( $id ) );
 
 		$this->audit->record(
 			'knowledge.source.deleted',
@@ -455,7 +474,7 @@ final class SourceController extends AbstractController {
 		$id = (int) $source->id;
 
 		$this->ingestion->cancel( $id );
-		$this->queue->cancel( IngestSourceJob::hook(), array( 'source_id' => $id ) );
+		$this->stopJobs( $id );
 
 		$this->audit->record(
 			'knowledge.source.cancelled',
@@ -619,6 +638,24 @@ final class SourceController extends AbstractController {
 	}
 
 	/**
+	 * Stop anything queued against a source.
+	 *
+	 * Both jobs, always. Cancelling only the ingest job leaves an embed
+	 * job that will start the moment the queue reaches it, against chunks
+	 * the operator has just asked to stop working on — and bill them for
+	 * the privilege.
+	 *
+	 * @param int $sourceId Source.
+	 * @return void
+	 */
+	private function stopJobs( int $sourceId ): void {
+		$args = array( 'source_id' => $sourceId );
+
+		$this->queue->cancel( IngestSourceJob::hook(), $args );
+		$this->queue->cancel( EmbedSourceJob::hook(), $args );
+	}
+
+	/**
 	 * Shape a source for the browser.
 	 *
 	 * @param KnowledgeSource $source     Source.
@@ -626,6 +663,14 @@ final class SourceController extends AbstractController {
 	 * @return array<string, mixed>
 	 */
 	private function present( KnowledgeSource $source, bool $withConfig = false ): array {
+		$id      = (int) $source->id;
+		$vectors = $id > 0 ? $this->stored->countForSource( $id ) : 0;
+		$pin     = EmbeddingModel::fromStorage(
+			$source->embedProvider,
+			$source->embedModel,
+			$source->embedDimensions
+		);
+
 		$data = array(
 			'uuid'           => $source->uuid->value,
 			'name'           => $source->name,
@@ -637,6 +682,15 @@ final class SourceController extends AbstractController {
 			'document_count' => $source->documentCount,
 			'chunk_count'    => $source->chunkCount,
 			'token_count'    => $source->tokenCount,
+			'vector_count'   => $vectors,
+			// Chunks exist but vectors do not, so the content is stored and
+			// not yet findable. Worth saying plainly: it is the state a
+			// customer is most likely to mistake for "indexed and broken".
+			'is_searchable'  => $vectors > 0,
+			'embedding'      => $pin?->jsonSerialize(),
+			'index_cost'     => null !== $pin
+				? $this->embeddings->estimateCost( $pin, $source->tokenCount )
+				: null,
 			'sync_schedule'  => $source->syncSchedule,
 			'last_synced_at' => $source->lastSyncedAt,
 			'last_error'     => $source->lastError,

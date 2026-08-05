@@ -60,6 +60,46 @@ final class DocumentRepository extends AbstractRepository implements DocumentRep
 		return $this->countWhere( 'source_id = %d', array( $sourceId ) );
 	}
 
+	public function titles( array $ids ): array {
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+
+		if ( array() === $ids ) {
+			return array();
+		}
+
+		$table        = $this->tableName();
+		$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+
+		$sql = $this->db->prepare(
+			"SELECT id, title, url FROM `{$table}` WHERE id IN ({$placeholders})",
+			...$ids
+		);
+
+		if ( ! is_string( $sql ) ) {
+			return array();
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $this->db->get_results( $sql, ARRAY_A );
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$titles = array();
+
+		foreach ( $rows as $row ) {
+			$url = isset( $row['url'] ) ? (string) $row['url'] : '';
+
+			$titles[ (int) ( $row['id'] ?? 0 ) ] = array(
+				'title' => (string) ( $row['title'] ?? '' ),
+				'url'   => '' === $url ? null : $url,
+			);
+		}
+
+		return $titles;
+	}
+
 	public function externalIds( int $sourceId ): array {
 		$table = $this->tableName();
 

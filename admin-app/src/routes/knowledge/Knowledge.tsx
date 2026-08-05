@@ -16,7 +16,7 @@ import { ErrorNotice } from '@/components/ui/ErrorNotice';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
-import { formatCompact } from '@/lib/format';
+import { formatCompact, formatCost } from '@/lib/format';
 import { AddSourceModal } from './AddSourceModal';
 import { SourceProgress } from './SourceProgress';
 import { SourceInspector } from './SourceInspector';
@@ -138,6 +138,31 @@ function SourceRow({ source, onInspect, onDelete }: SourceRowProps) {
               <Stat label="Documents" value={source.document_count} />
               <Stat label="Chunks" value={source.chunk_count} />
               <Stat label="Tokens" value={source.token_count} compact />
+              {source.chunk_count > 0 && (
+                <div className="flex gap-1">
+                  <dt className="text-content-tertiary">Vectors</dt>
+                  <dd className="tabular-nums text-content">
+                    {source.vector_count.toLocaleString()}
+                    {source.embedding && (
+                      <span className="text-content-tertiary">
+                        {' '}
+                        · {source.embedding.model}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
+              {source.index_cost !== null && source.index_cost > 0 && (
+                <div className="flex gap-1">
+                  <dt className="text-content-tertiary">Indexing cost</dt>
+                  {/* What it actually cost, from the pinned model's
+                      published price and the tokens really stored — not an
+                      estimate of what it might cost. */}
+                  <dd className="tabular-nums">
+                    {formatCost(source.index_cost)}
+                  </dd>
+                </div>
+              )}
               {source.last_synced_at && (
                 <div className="flex gap-1">
                   <dt className="text-content-tertiary">Last indexed</dt>
@@ -236,6 +261,13 @@ function StatusBadge({ source }: { source: KnowledgeSource }) {
     // Ready with nothing in it is not ready. Saying so here saves the
     // customer discovering it when the clerk cannot answer.
     return <Badge tone="warning">Empty</Badge>;
+  }
+
+  if (!source.is_searchable) {
+    // Text stored, vectors missing. The most confusing state in the
+    // product if left unnamed: the source reports documents and chunks
+    // and a clerk still cannot find any of it.
+    return <Badge tone="warning">Not searchable</Badge>;
   }
 
   return <Badge tone="positive">Ready</Badge>;

@@ -11,6 +11,7 @@ namespace Hiveclerk\Ai\Providers;
 
 use Hiveclerk\Ai\CompletionRequest;
 use Hiveclerk\Ai\Credentials;
+use Hiveclerk\Ai\EmbeddingProviderInterface;
 use Hiveclerk\Ai\Model;
 use Hiveclerk\Ai\ProviderCapabilities;
 use Hiveclerk\Ai\ProviderException;
@@ -30,7 +31,23 @@ use Hiveclerk\Ai\ProviderId;
  * rather than from us: only the customer's Azure account knows what they
  * called their deployments.
  */
-final class AzureOpenAiProvider extends OpenAiCompatibleProvider {
+final class AzureOpenAiProvider extends OpenAiCompatibleProvider implements EmbeddingProviderInterface {
+
+	use OpenAiEmbeddings;
+
+	/**
+	 * Deployment name fragments that suggest an embedding model.
+	 *
+	 * A heuristic, and labelled as one in the UI. Azure's deployment list
+	 * reports the underlying model name, but a customer is free to deploy
+	 * `text-embedding-3-small` as `vectors`, and nothing in the API says
+	 * which deployments are embedding endpoints. The list is a starting
+	 * point; the operator can pick any deployment, and the first call
+	 * tells them plainly if they picked a chat one.
+	 *
+	 * @var array<int, string>
+	 */
+	private const EMBEDDING_HINTS = array( 'embed', 'ada-002', 'vector' );
 
 	/**
 	 * API version used when the operator has not pinned one.
@@ -127,6 +144,61 @@ final class AzureOpenAiProvider extends OpenAiCompatibleProvider {
 		}
 
 		return $models;
+	}
+
+	/**
+	 * Deployments that look like embedding endpoints.
+	 *
+	 * @param Credentials $credentials Credentials.
+	 * @return array<int, Model>
+	 *
+	 * @throws ProviderException When the resource cannot be reached.
+	 */
+	public function embeddingModels( Credentials $credentials ): array {
+		$models = array();
+
+		foreach ( $this->models( $credentials ) as $model ) {
+			$haystack = strtolower( $model->id . ' ' . $model->label );
+
+			foreach ( self::EMBEDDING_HINTS as $hint ) {
+				if ( str_contains( $haystack, $hint ) ) {
+					// Width is left at zero: only the deployment knows it,
+					// and it is measured from the first response rather
+					// than guessed from a name the customer chose.
+					$models[] = Model::embedding( $model->id, $model->label, 0, $model->pricing );
+
+					break;
+				}
+			}
+		}
+
+		return $models;
+	}
+
+	/**
+	 * Default embedding deployment.
+	 *
+	 * Empty for the same reason defaultModel() is: a deployment name is
+	 * customer-chosen and cannot be guessed.
+	 *
+	 * @return string
+	 */
+	public function defaultEmbeddingModel(): string {
+		return '';
+	}
+
+	/**
+	 * Embeddings endpoint for a deployment.
+	 *
+	 * @param Credentials $credentials Credentials.
+	 * @param string      $model       Deployment name.
+	 * @return string
+	 */
+	protected function embeddingUrl( Credentials $credentials, string $model ): string {
+		return $this->url(
+			$credentials,
+			sprintf( '/openai/deployments/%s/embeddings', rawurlencode( $model ) )
+		);
 	}
 
 	/**
