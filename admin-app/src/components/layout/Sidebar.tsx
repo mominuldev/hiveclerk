@@ -7,6 +7,7 @@ import {
   Plug,
   Settings,
   UserRoundCheck,
+  Users,
   Workflow,
 } from 'lucide-react';
 import { RosterRail } from './RosterRail';
@@ -17,6 +18,7 @@ import { cn } from '@/lib/cn';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/clerks', label: 'AI Employees', icon: Users },
   { to: '/conversations', label: 'Conversations', icon: MessagesSquare },
   { to: '/leads', label: 'Leads', icon: UserRoundCheck },
   { to: '/knowledge', label: 'Knowledge', icon: BookOpen },
@@ -28,9 +30,10 @@ const NAV = [
 
 interface SidebarProps {
   clerks: Clerk[];
+  onHire?: () => void;
 }
 
-export function Sidebar({ clerks }: SidebarProps) {
+export function Sidebar({ clerks, onHire }: SidebarProps) {
   const { branding, licence } = boot();
 
   return (
@@ -96,7 +99,7 @@ export function Sidebar({ clerks }: SidebarProps) {
 
       <div className="hvc-hairline-x mx-3 my-3 h-px" />
 
-      <RosterRail clerks={clerks} />
+      <RosterRail clerks={clerks} {...(onHire ? { onHire } : {})} />
 
       <div className="mt-auto px-4 py-3.5">
         <div className="hvc-hairline-x mb-3 h-px" />

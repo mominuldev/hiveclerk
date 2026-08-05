@@ -74,6 +74,57 @@ abstract class Migration {
 	}
 
 	/**
+	 * Whether a column already exists.
+	 *
+	 * MySQL 8 has no `ADD COLUMN IF NOT EXISTS` — that spelling is
+	 * MariaDB's, and a migration written with it applies cleanly on half
+	 * the hosting landscape and hard-fails on the other half. Asking
+	 * first is the only form of idempotence both engines share.
+	 *
+	 * @param string $table  Schema constant.
+	 * @param string $column Column name.
+	 * @return bool
+	 */
+	protected function hasColumn( string $table, string $column ): bool {
+		global $wpdb;
+
+		$name = Schema::table( $table );
+
+		// LIKE takes a value, not an identifier, so it is prepared. The
+		// table name is a Schema constant and cannot be parameterised.
+		$sql = $wpdb->prepare( "SHOW COLUMNS FROM `{$name}` LIKE %s", $column ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		if ( ! is_string( $sql ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
+		return null !== $wpdb->get_var( $sql );
+	}
+
+	/**
+	 * Whether an index already exists.
+	 *
+	 * @param string $table Schema constant.
+	 * @param string $index Index name.
+	 * @return bool
+	 */
+	protected function hasIndex( string $table, string $index ): bool {
+		global $wpdb;
+
+		$name = Schema::table( $table );
+
+		$sql = $wpdb->prepare( "SHOW INDEX FROM `{$name}` WHERE Key_name = %s", $index ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		if ( ! is_string( $sql ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
+		return null !== $wpdb->get_var( $sql );
+	}
+
+	/**
 	 * Drop a table.
 	 *
 	 * @param string $table Schema constant.

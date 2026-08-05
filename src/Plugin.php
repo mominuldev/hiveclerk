@@ -99,6 +99,10 @@ final class Plugin {
 		// Chat after Knowledge: it resolves RetrievalService and
 		// TokenEstimator out of the container, and both are bound there.
 		$registry->add( new Modules\Chat\ChatModule() );
+		// Agents last: the test console runs a clerk through Chat's prompt
+		// builder and guardrails, so both have to be bound before it asks
+		// the container for them.
+		$registry->add( new Modules\Agents\AgentsModule() );
 
 		/**
 		 * Register feature modules.

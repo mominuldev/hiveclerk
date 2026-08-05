@@ -10,7 +10,7 @@ export interface ReplyHandlers {
   onDelta: (text: string) => void;
   onReplace: (text: string) => void;
   onCitations: (citations: Citation[]) => void;
-  onDone: () => void;
+  onDone: (payload?: Record<string, unknown>) => void;
   onError: (message: string) => void;
 }
 
@@ -196,7 +196,7 @@ function dispatch(frame: string, handlers: ReplyHandlers): void {
       handlers.onCitations((payload.citations as Citation[]) ?? []);
       break;
     case 'done':
-      handlers.onDone();
+      handlers.onDone(payload);
       break;
     case 'error':
       handlers.onError(String(payload.message ?? ''));
@@ -279,6 +279,7 @@ async function poll(api: Api, text: string, handlers: ReplyHandlers): Promise<vo
         citations: Citation[];
         message_id: string | null;
         error: { code: string; message: string } | null;
+        done?: Record<string, unknown>;
       };
     };
 
@@ -312,7 +313,7 @@ async function poll(api: Api, text: string, handlers: ReplyHandlers): Promise<vo
         handlers.onCitations(state.citations);
       }
 
-      handlers.onDone();
+      handlers.onDone(state.done);
 
       return;
     }

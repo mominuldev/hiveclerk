@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Domain\Agent;
 
+use DateTimeImmutable;
 use Hiveclerk\Domain\Shared\Uuid;
 
 /**
@@ -38,6 +39,11 @@ final class Agent {
 	 * @param int                   $tokensUsedMonth Consumed this period.
 	 * @param string|null           $avatarUrl       Face shown in the widget.
 	 * @param array<string, mixed>  $widgetConfig    Position, accent, radius, theme.
+	 * @param array<string, mixed>  $personality     Tone dials.
+	 * @param array<string, mixed>  $displayRulesRaw Where the clerk appears.
+	 * @param array<string, mixed>  $leadConfig      Qualification settings, Sprint 7.
+	 * @param DateTimeImmutable|null $budgetResetAt  When the monthly counter last rolled over.
+	 * @param DateTimeImmutable|null $createdAt      Hire date, UTC.
 	 */
 	public function __construct(
 		public ?int $id,
@@ -55,20 +61,45 @@ final class Agent {
 		public int $tokensUsedMonth = 0,
 		public ?string $avatarUrl = null,
 		public array $widgetConfig = array(),
+		public array $personality = array(),
+		public array $displayRulesRaw = array(),
+		public array $leadConfig = array(),
+		public ?DateTimeImmutable $budgetResetAt = null,
+		public ?DateTimeImmutable $createdAt = null,
 	) {
 	}
 
 	/**
 	 * Whether this clerk is serving visitors right now.
 	 *
-	 * A published clerk that has exhausted its budget is not serving: it
-	 * shows its fallback message instead of spending money the owner did
-	 * not agree to.
+	 * A published clerk whose budget is spent is not serving, unless its
+	 * owner explicitly chose to keep answering past the cap: the cap is a
+	 * promise about money, and honouring it by default is the whole point
+	 * of setting one.
 	 *
 	 * @return bool
 	 */
 	public function isServing(): bool {
-		return $this->status->isServing() && ! $this->hasExhaustedBudget();
+		return $this->status->isServing() && ! $this->isBudgetBlocked();
+	}
+
+	/**
+	 * Where this clerk is allowed to appear (FR-CLK-07).
+	 *
+	 * @return DisplayRules
+	 */
+	public function displayRules(): DisplayRules {
+		return DisplayRules::fromArray( $this->displayRulesRaw );
+	}
+
+	/**
+	 * Whether this clerk should serve the page described.
+	 *
+	 * @param PageContext $context The page view.
+	 * @return bool
+	 */
+	public function appearsOn( PageContext $context ): bool {
+		return $this->displayRules()->allows( $context );
 	}
 
 	/**
@@ -82,6 +113,83 @@ final class Agent {
 		}
 
 		return $this->tokensUsedMonth >= $this->tokenBudget;
+	}
+
+	/**
+	 * Whether an exhausted budget actually stops this clerk.
+	 *
+	 * Defaults to stopping. A cap that keeps spending after it is reached
+	 * is not a cap, and an operator who typed a number into a field
+	 * labelled "monthly token budget" has said what they want.
+	 *
+	 * @return bool
+	 */
+	public function stopsAtBudget(): bool {
+		return 'continue' !== ( $this->guardrails['on_budget_exhausted'] ?? 'fallback' );
+	}
+
+	/**
+	 * Whether the budget is both spent and binding.
+	 *
+	 * @return bool
+	 */
+	public function isBudgetBlocked(): bool {
+		return $this->hasExhaustedBudget() && $this->stopsAtBudget();
+	}
+
+	/**
+	 * Text appended verbatim to every reply, or null.
+	 *
+	 * A required disclaimer (FR-CLK-06) is a legal instrument, so it is
+	 * appended by us rather than asked of the model. A model instructed to
+	 * "always end with X" complies almost always, and "almost" is not a
+	 * property anyone wants attached to a VAT notice.
+	 *
+	 * @return string|null
+	 */
+	public function disclaimer(): ?string {
+		$value = $this->guardrails['disclaimer'] ?? null;
+
+		if ( ! is_string( $value ) || '' === trim( $value ) ) {
+			return null;
+		}
+
+		return trim( $value );
+	}
+
+	/**
+	 * How formal the clerk sounds, 0 formal to 1 casual.
+	 *
+	 * @return float
+	 */
+	public function formality(): float {
+		return $this->dial( 'formality', 0.5 );
+	}
+
+	/**
+	 * How much the clerk says, 0 brief to 1 detailed.
+	 *
+	 * @return float
+	 */
+	public function verbosity(): float {
+		return $this->dial( 'verbosity', 0.35 );
+	}
+
+	/**
+	 * A personality dial, clamped to 0..1.
+	 *
+	 * @param string $key      Dial name.
+	 * @param float  $fallback Value when unset or unreadable.
+	 * @return float
+	 */
+	private function dial( string $key, float $fallback ): float {
+		$value = $this->personality[ $key ] ?? null;
+
+		if ( ! is_numeric( $value ) ) {
+			return $fallback;
+		}
+
+		return max( 0.0, min( 1.0, (float) $value ) );
 	}
 
 	/**

@@ -12,7 +12,7 @@ code; read the specific deliverable before designing anything.
 A hive of AI clerks that answer from your own content, capture leads, and sync
 them onward. Self-hosted: the customer's data never leaves their server.
 
-Phase 5 (implementation) is in progress. Sprints 0–3 are complete; the sprint
+Phase 5 (implementation) is in progress. Sprints 0–6 are complete; the sprint
 plan is `docs/14-sprint-plan.md` and every sprint's outcome is recorded in
 `CHANGELOG.md` — including what was *not* delivered.
 
@@ -80,7 +80,7 @@ Two custom PHPStan rules enforce this and **both are verified to fire**:
 - `hiveclerk.domainPurity` — no WordPress function may be called inside
   `src/Domain/`. Not `apply_filters`, not `__()`, nothing.
 - `hiveclerk.noGlobalWpdb` — `$wpdb` exists only in `src/Database/`,
-  `src/Infrastructure/Wordpress/` and `uninstall.php`.
+  `src/Infrastructure/WordPress/` and `uninstall.php`.
 
 If a rule fires, the fix is the code, not the rule.
 

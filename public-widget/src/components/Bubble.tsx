@@ -20,6 +20,8 @@ export function Bubble({ message, labels, onRate }: Props): preact.JSX.Element {
   return (
     <div class={`row ${message.role}`}>
       <div class="bubble">
+        {message.fromHuman ? <div class="from-human">{labels.fromHuman}</div> : null}
+
         {waiting ? (
           <div class="typing" aria-label={labels.thinking}>
             <span />
@@ -59,7 +61,10 @@ export function Bubble({ message, labels, onRate }: Props): preact.JSX.Element {
           </div>
         )}
 
-        {isClerk && !message.streaming && message.text !== '' && (
+        {/* No rating on a human reply. The thumbs measure how the clerk is
+            answering, and letting a colleague's message into that number
+            makes the one quality signal in the product unreadable. */}
+        {isClerk && !message.fromHuman && !message.streaming && message.text !== '' && (
           <div class="feedback">
             {message.rating ? (
               <span class="note">{labels.rated}</span>

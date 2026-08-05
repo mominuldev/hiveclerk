@@ -25,6 +25,8 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [awaitingHuman, setAwaitingHuman] = useState(false);
+  const [humanActive, setHumanActive] = useState(false);
 
   const log = useRef<HTMLDivElement | null>(null);
   const launcher = useRef<HTMLButtonElement | null>(null);
@@ -50,12 +52,41 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
       return;
     }
 
-    void api.history().then((restored) => {
-      if (restored.length > 0) {
-        setMessages(restored);
+    void api.transcript().then((restored) => {
+      if (restored.messages.length > 0) {
+        setMessages(restored.messages);
       }
+
+      setAwaitingHuman(restored.awaitingHuman);
+      setHumanActive(restored.humanActive);
     });
   }, [open, messages.length, api]);
+
+  /*
+   * While a colleague has the conversation, the transcript is re-read on a
+   * timer. There is no push channel to a widget sitting on a cached page,
+   * and a human reply nobody sees until the visitor reloads is a reply
+   * that did not happen. Only while the panel is open and only while a
+   * person is actually involved — this is the whole cost of the feature.
+   */
+  useEffect(() => {
+    if (!open || !awaitingHuman) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void api.transcript().then((latest) => {
+        if (latest.messages.length > 0) {
+          setMessages(latest.messages);
+        }
+
+        setAwaitingHuman(latest.awaitingHuman);
+        setHumanActive(latest.humanActive);
+      });
+    }, 8000);
+
+    return () => window.clearInterval(timer);
+  }, [open, awaitingHuman, api]);
 
   /* Keep the newest turn in view as it grows. */
   useEffect(() => {
@@ -164,9 +195,17 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
           patch({ text: text_ });
         },
         onCitations: (citations) => patch({ citations }),
-        onDone: () => {
+        onDone: (payload) => {
           patch({ streaming: false });
           setBusy(false);
+
+          if (payload?.awaiting_human === true) {
+            // The clerk did not answer because a colleague has this
+            // conversation. Nothing was generated, so the empty pending
+            // bubble is removed rather than left as a blank reply.
+            setAwaitingHuman(true);
+            setMessages((current) => current.filter((message) => message.id !== pendingId));
+          }
         },
         onError: (message) => {
           patch({ streaming: false, failed: true });
@@ -251,8 +290,42 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
           <Bubble key={message.id} message={message} labels={labels} onRate={rate} />
         ))}
 
+        {awaitingHuman ? (
+          <div class="notice">{humanActive ? labels.humanHere : labels.waitingHuman}</div>
+        ) : null}
+
         {error ? <div class="error">{error}</div> : null}
       </div>
+
+      {boot.capabilities.handoff && !awaitingHuman ? (
+        <button
+          type="button"
+          class="handoff"
+          onClick={() => {
+            // Optimistic, and deliberately so: the visitor has just asked
+            // for a person and the one thing they must not see is the
+            // button they pressed doing nothing while a request flies.
+            setAwaitingHuman(true);
+
+            void api.handoff().then((accepted) => {
+              if (!accepted) {
+                setAwaitingHuman(false);
+                setError(labels.offline);
+
+                return;
+              }
+
+              void api.transcript().then((latest) => {
+                if (latest.messages.length > 0) {
+                  setMessages(latest.messages);
+                }
+              });
+            });
+          }}
+        >
+          {labels.askHuman}
+        </button>
+      ) : null}
 
       <Composer labels={labels} busy={busy} onSend={submit} />
 

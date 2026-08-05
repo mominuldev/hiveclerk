@@ -1,20 +1,19 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { ToastViewport } from '@/components/ui/Toast';
+import { dutyStatus } from '@/routes/clerks/status';
+import { useAgents } from '@/api/queries/useAgents';
 import type { Clerk } from '@/stores/useRoster';
-
-/**
- * Roster data arrives from the API in Sprint 6. Until then the rail renders
- * its real empty state rather than placeholder staff — showing invented
- * clerks would make the shell look finished when it is not.
- */
-const CLERKS: Clerk[] = [];
 
 const PAGES: Record<string, { title: string; subtitle: string }> = {
   '/dashboard': {
     title: 'Dashboard',
     subtitle: 'How your clerks are performing',
+  },
+  '/clerks': {
+    title: 'AI Employees',
+    subtitle: 'Who is on duty, and what they cost',
   },
   '/conversations': {
     title: 'Conversations',
@@ -41,13 +40,27 @@ const PAGES: Record<string, { title: string; subtitle: string }> = {
 
 export function AppShell() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+
+  // The rail is on every screen, so this query is the app's most-shared
+  // piece of server state. React Query owns it; the rail's *selection*
+  // lives in Zustand, because that is ephemeral UI and nothing else.
+  const roster = useAgents();
+
+  const clerks: Clerk[] =
+    roster.data?.agents.map((agent) => ({
+      uuid: agent.uuid,
+      name: agent.name,
+      role: agent.role_label,
+      status: dutyStatus(agent),
+    })) ?? [];
   const page = Object.entries(PAGES).find(([path]) =>
     pathname.startsWith(path)
   )?.[1] ?? { title: 'Dashboard', subtitle: 'How your clerks are performing' };
 
   return (
     <div className="flex h-[calc(100vh-32px)] overflow-hidden text-content">
-      <Sidebar clerks={CLERKS} />
+      <Sidebar clerks={clerks} onHire={() => void navigate('/clerks')} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar title={page.title} subtitle={page.subtitle} />

@@ -78,6 +78,7 @@ final class MessageRepository extends AbstractRepository implements MessageRepos
 			'conversation_id' => $message->conversationId,
 			'role'            => $message->role->value,
 			'content'         => $message->content,
+			'wp_user_id'      => $message->wpUserId,
 			'provider'        => $message->provider,
 			'model'           => $message->model,
 			'tokens_in'       => $message->tokensIn,
@@ -141,6 +142,7 @@ final class MessageRepository extends AbstractRepository implements MessageRepos
 			retrievalScore: isset( $row['retrieval_score'] ) ? (float) $row['retrieval_score'] : null,
 			isGrounded: (bool) ( $row['is_grounded'] ?? false ),
 			rating: isset( $row['rating'] ) ? (int) $row['rating'] : null,
+			wpUserId: isset( $row['wp_user_id'] ) ? (int) $row['wp_user_id'] : null,
 			createdAt: $createdAt,
 			guardrailFlags: array_values(
 				array_filter(

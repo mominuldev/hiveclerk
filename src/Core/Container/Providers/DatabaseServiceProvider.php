@@ -19,6 +19,7 @@ use Hiveclerk\Database\Migrations\M0005_Email;
 use Hiveclerk\Database\Migrations\M0006_Integrations;
 use Hiveclerk\Database\Migrations\M0007_Platform;
 use Hiveclerk\Database\Migrations\M0008_UsageCostNullable;
+use Hiveclerk\Database\Migrations\M0009_ConversationSupervision;
 use Hiveclerk\Database\Repositories\AuditRepository;
 use Hiveclerk\Database\Repositories\UsageRepository;
 use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
@@ -57,6 +58,7 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		M0006_Integrations::class,
 		M0007_Platform::class,
 		M0008_UsageCostNullable::class,
+		M0009_ConversationSupervision::class,
 	);
 
 	/**

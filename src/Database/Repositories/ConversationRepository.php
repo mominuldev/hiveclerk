@@ -14,6 +14,7 @@ use DateTimeZone;
 use Hiveclerk\Database\AbstractRepository;
 use Hiveclerk\Database\Schema;
 use Hiveclerk\Domain\Conversation\Conversation;
+use Hiveclerk\Domain\Conversation\ConversationNote;
 use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
 use Hiveclerk\Domain\Conversation\ConversationStatus;
 use Hiveclerk\Domain\Shared\Pagination;
@@ -74,17 +75,28 @@ final class ConversationRepository extends AbstractRepository implements Convers
 			'status'           => $conversation->status->value,
 			'language'         => $conversation->language,
 			'page_url'         => $conversation->pageUrl,
+			'page_title'       => $conversation->pageTitle,
 			'message_count'    => $conversation->messageCount,
 			'summary'          => $conversation->summary,
+			'sentiment'        => $conversation->sentiment,
 			'resolved_by_ai'   => $conversation->resolvedByAi ? 1 : 0,
+			'handoff_user_id'  => $conversation->handoffUserId,
+			'handoff_at'       => $this->stamp( $conversation->handoffAt ),
+			'rating'           => $conversation->rating,
+			'starred'          => $conversation->starred ? 1 : 0,
+			'tags'             => $this->encodeJson( array_values( $conversation->tags ) ),
+			'notes'            => $this->encodeJson( $this->encodeNotes( $conversation->notes ) ),
 			'total_tokens_in'  => $conversation->totalTokensIn,
 			'total_tokens_out' => $conversation->totalTokensOut,
 			'total_cost'       => $conversation->totalCost,
-			'last_message_at'  => $this->now(),
+			'last_message_at'  => $this->stamp( $conversation->lastMessageAt ),
+			'ended_at'         => $this->stamp( $conversation->endedAt ),
 		);
 
 		if ( null === $conversation->id ) {
-			$data['started_at'] = $this->now();
+			$started                 = $conversation->startedAt ?? new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) );
+			$data['started_at']      = $this->stamp( $started );
+			$conversation->startedAt = $started;
 
 			$id = $this->insertRow( $data );
 
@@ -113,30 +125,7 @@ final class ConversationRepository extends AbstractRepository implements Convers
 	 * @return bool
 	 */
 	public function delete( int $id ): bool {
-		$messages  = Schema::table( Schema::MESSAGES );
-		$citations = Schema::table( Schema::MESSAGE_CITATIONS );
-
-		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$this->db->query( 'START TRANSACTION' );
-
-		$citationsDeleted = $this->execute(
-			"DELETE c FROM `{$citations}` c
-			 INNER JOIN `{$messages}` m ON m.id = c.message_id
-			 WHERE m.conversation_id = %d",
-			array( $id )
-		);
-
-		$messagesDeleted = $this->execute(
-			"DELETE FROM `{$messages}` WHERE conversation_id = %d",
-			array( $id )
-		);
-
-		$deleted = $citationsDeleted && $messagesDeleted && $this->deleteRow( $id );
-
-		$this->db->query( $deleted ? 'COMMIT' : 'ROLLBACK' );
-		// phpcs:enable
-
-		return $deleted;
+		return 1 === $this->purge( array( $id ) );
 	}
 
 	public function awaitingHandoff( int $limit = 20 ): array {
@@ -149,6 +138,125 @@ final class ConversationRepository extends AbstractRepository implements Convers
 		);
 
 		return array_map( fn ( array $row ): Conversation => $this->hydrate( $row ), $rows );
+	}
+
+	public function idsStartedBefore( string $cutoff, int $limit ): array {
+		$table = $this->tableName();
+
+		$prepared = $this->db->prepare(
+			"SELECT id FROM `{$table}` WHERE started_at < %s ORDER BY started_at ASC LIMIT %d",
+			$cutoff,
+			$limit
+		);
+
+		if ( ! is_string( $prepared ) ) {
+			return array();
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$ids = $this->db->get_col( $prepared );
+
+		return is_array( $ids ) ? array_values( array_map( 'intval', $ids ) ) : array();
+	}
+
+	public function countStartedBefore( string $cutoff ): int {
+		return $this->countWhere( 'started_at < %s', array( $cutoff ) );
+	}
+
+	/**
+	 * Delete a batch of conversations and their children.
+	 *
+	 * The whole batch is one transaction. Purging is the one operation in
+	 * the product that destroys data on a timer, so a half-deleted
+	 * conversation — messages gone, row remaining — is the outcome worth
+	 * the most effort to avoid: it reads in the admin as a conversation
+	 * that happened and had nothing said in it.
+	 *
+	 * @param array<int, int> $ids Storage ids.
+	 * @return int Conversations deleted.
+	 */
+	public function purge( array $ids ): int {
+		$ids = array_values( array_unique( array_map( 'intval', $ids ) ) );
+
+		if ( array() === $ids ) {
+			return 0;
+		}
+
+		$table     = $this->tableName();
+		$messages  = Schema::table( Schema::MESSAGES );
+		$citations = Schema::table( Schema::MESSAGE_CITATIONS );
+
+		// Placeholders are generated from the count of ids and every value
+		// is still bound, so nothing but %d ever reaches the statement.
+		$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$this->db->query( 'START TRANSACTION' );
+
+		$done = $this->execute(
+			"DELETE c FROM `{$citations}` c
+			 INNER JOIN `{$messages}` m ON m.id = c.message_id
+			 WHERE m.conversation_id IN ({$placeholders})",
+			$ids
+		);
+
+		$done = $done && $this->execute(
+			"DELETE FROM `{$messages}` WHERE conversation_id IN ({$placeholders})",
+			$ids
+		);
+
+		$done = $done && $this->execute(
+			"DELETE FROM `{$table}` WHERE id IN ({$placeholders})",
+			$ids
+		);
+
+		$this->db->query( $done ? 'COMMIT' : 'ROLLBACK' );
+		// phpcs:enable
+
+		return $done ? count( $ids ) : 0;
+	}
+
+	public function statsForAgents( array $agentIds, string $since ): array {
+		$agentIds = array_values( array_unique( array_map( 'intval', $agentIds ) ) );
+
+		if ( array() === $agentIds ) {
+			return array();
+		}
+
+		$table        = $this->tableName();
+		$placeholders = implode( ', ', array_fill( 0, count( $agentIds ), '%d' ) );
+
+		$prepared = $this->db->prepare(
+			"SELECT agent_id,
+			        COUNT(*) AS conversations,
+			        SUM(CASE WHEN resolved_by_ai = 1 THEN 1 ELSE 0 END) AS resolved,
+			        SUM(CASE WHEN status = 'handoff_requested' THEN 1 ELSE 0 END) AS handoffs,
+			        SUM(total_cost) AS cost
+			 FROM `{$table}`
+			 WHERE started_at >= %s AND agent_id IN ({$placeholders})
+			 GROUP BY agent_id", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			array_merge( array( $since ), $agentIds )
+		);
+
+		if ( ! is_string( $prepared ) ) {
+			return array();
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $this->db->get_results( $prepared, ARRAY_A );
+
+		$stats = array();
+
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			$stats[ (int) $row['agent_id'] ] = array(
+				'conversations' => (int) $row['conversations'],
+				'resolved'      => (int) $row['resolved'],
+				'handoffs'      => (int) $row['handoffs'],
+				'cost'          => (float) $row['cost'],
+			);
+		}
+
+		return $stats;
 	}
 
 	/**
@@ -182,6 +290,43 @@ final class ConversationRepository extends AbstractRepository implements Convers
 			$where .= $filters['has_lead'] ? ' AND lead_id IS NOT NULL' : ' AND lead_id IS NULL';
 		}
 
+		if ( isset( $filters['handoff'] ) && $filters['handoff'] ) {
+			// Both handoff states, because "show me the handoffs" means the
+			// ones still waiting and the ones a colleague already picked up.
+			$where   .= ' AND status IN ( %s, %s )';
+			$params[] = ConversationStatus::HandoffRequested->value;
+			$params[] = ConversationStatus::HandoffActive->value;
+		}
+
+		if ( isset( $filters['starred'] ) && $filters['starred'] ) {
+			$where .= ' AND starred = 1';
+		}
+
+		if ( isset( $filters['rating'] ) && is_numeric( $filters['rating'] ) ) {
+			$where   .= ' AND rating = %d';
+			$params[] = (int) $filters['rating'];
+		}
+
+		if ( isset( $filters['sentiment'] ) && is_string( $filters['sentiment'] ) && '' !== $filters['sentiment'] ) {
+			$where   .= ' AND sentiment = %s';
+			$params[] = $filters['sentiment'];
+		}
+
+		if ( isset( $filters['tag'] ) && is_string( $filters['tag'] ) && '' !== $filters['tag'] ) {
+			// A LIKE over the JSON array. Exact enough for a chip filter and
+			// index-free either way, since a JSON predicate cannot use one.
+			$where   .= ' AND tags LIKE %s';
+			$params[] = '%' . $this->db->esc_like( '"' . $filters['tag'] . '"' ) . '%';
+		}
+
+		if ( isset( $filters['search'] ) && is_string( $filters['search'] ) && '' !== trim( $filters['search'] ) ) {
+			$like     = '%' . $this->db->esc_like( trim( $filters['search'] ) ) . '%';
+			$where   .= ' AND ( summary LIKE %s OR page_title LIKE %s OR page_url LIKE %s )';
+			$params[] = $like;
+			$params[] = $like;
+			$params[] = $like;
+		}
+
 		if ( isset( $filters['date_from'] ) && is_string( $filters['date_from'] ) ) {
 			$where   .= ' AND started_at >= %s';
 			$params[] = $filters['date_from'];
@@ -196,16 +341,68 @@ final class ConversationRepository extends AbstractRepository implements Convers
 	}
 
 	/**
+	 * Notes in the shape the JSON column holds.
+	 *
+	 * @param array<int, ConversationNote> $notes Notes.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function encodeNotes( array $notes ): array {
+		return array_values(
+			array_map(
+				static fn ( ConversationNote $note ): array => $note->toArray(),
+				$notes
+			)
+		);
+	}
+
+	/**
+	 * A DateTimeImmutable as a MySQL DATETIME in UTC, or null.
+	 *
+	 * @param DateTimeImmutable|null $value Time.
+	 * @return string|null
+	 */
+	private function stamp( ?DateTimeImmutable $value ): ?string {
+		return null === $value
+			? null
+			: $value->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
+	}
+
+	/**
+	 * Parse a stored DATETIME, which is always UTC.
+	 *
+	 * @param mixed $value Raw column value.
+	 * @return DateTimeImmutable|null
+	 */
+	private function time( mixed $value ): ?DateTimeImmutable {
+		if ( ! is_string( $value ) || '' === $value ) {
+			return null;
+		}
+
+		return new DateTimeImmutable( $value, new DateTimeZone( 'UTC' ) );
+	}
+
+	/**
 	 * Build a Conversation from a database row.
 	 *
 	 * @param array<string, mixed> $row Row.
 	 * @return Conversation
 	 */
 	private function hydrate( array $row ): Conversation {
-		$startedAt = null;
+		$tags = array_values(
+			array_filter(
+				$this->json( $row['tags'] ?? null ),
+				static fn ( $tag ): bool => is_string( $tag ) && '' !== $tag
+			)
+		);
 
-		if ( isset( $row['started_at'] ) && is_string( $row['started_at'] ) ) {
-			$startedAt = new DateTimeImmutable( $row['started_at'], new DateTimeZone( 'UTC' ) );
+		$notes = array();
+
+		foreach ( $this->json( $row['notes'] ?? null ) as $entry ) {
+			$note = ConversationNote::fromArray( $entry );
+
+			if ( null !== $note ) {
+				$notes[] = $note;
+			}
 		}
 
 		return new Conversation(
@@ -223,7 +420,17 @@ final class ConversationRepository extends AbstractRepository implements Convers
 			totalTokensIn: (int) ( $row['total_tokens_in'] ?? 0 ),
 			totalTokensOut: (int) ( $row['total_tokens_out'] ?? 0 ),
 			totalCost: (float) ( $row['total_cost'] ?? 0 ),
-			startedAt: $startedAt,
+			startedAt: $this->time( $row['started_at'] ?? null ),
+			pageTitle: isset( $row['page_title'] ) ? (string) $row['page_title'] : null,
+			tags: $tags,
+			starred: (bool) ( $row['starred'] ?? false ),
+			notes: $notes,
+			handoffUserId: isset( $row['handoff_user_id'] ) ? (int) $row['handoff_user_id'] : null,
+			handoffAt: $this->time( $row['handoff_at'] ?? null ),
+			rating: isset( $row['rating'] ) ? (int) $row['rating'] : null,
+			sentiment: isset( $row['sentiment'] ) ? (string) $row['sentiment'] : null,
+			lastMessageAt: $this->time( $row['last_message_at'] ?? null ),
+			endedAt: $this->time( $row['ended_at'] ?? null ),
 		);
 	}
 }

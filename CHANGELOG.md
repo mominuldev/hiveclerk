@@ -6,6 +6,262 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Sprint 6 — Clerks and conversations admin
+
+**Goal:** operators can configure and supervise their staff.
+
+#### Added
+
+- **The Agents module** (`src/Modules/Agents/`) — `AgentService` for the
+  lifecycle (FR-CLK-01), `PresetLibrary` for the five roles (FR-CLK-05),
+  `PublishPolicy` for the free-tier cap (FR-CLK-09), `BudgetGuard` for the
+  monthly cap and what it costs (FR-CLK-03), and `TestConsoleService` for
+  the console (FR-CLK-08).
+- **Role presets with the instructions already written.** Support, Sales,
+  Lead qualifier, FAQ, Concierge and Custom, each a paragraph in the
+  second person. The instructions are the product here, not the labels: an
+  operator handed an empty "what this clerk does" box writes two sentences
+  and gets a chatbot, and the same operator editing a paragraph that
+  already says *ask what conditions they expect before recommending
+  anything* gets something that behaves like staff.
+- **Display rules** (FR-CLK-07) — `DisplayRules` and `PageContext` in the
+  domain, `PageContextFactory` in `src/Infrastructure/WordPress/`, and
+  `WidgetConfig::select()` now evaluating them. Path, device, audience and
+  country, ANDed together, with exclusions beating inclusions.
+- **`BudgetGuard`** — rolls the month over on read, and turns a token cap
+  into money at published rates. Unknown price is `null`, never `0`.
+- **The test console** — same guardrails, same retrieval, same prompt
+  assembly as a live conversation, and no persistence. Diagnostics carry
+  retrieval and completion time, tokens, cost, groundedness, which
+  guardrails fired, how many chunks the budget cut, and the assembled
+  prompt.
+- **Conversation supervision** (FR-CNV-01, 02, 04) — list with filters
+  (clerk, status, handoff, starred, lead, rating, sentiment, tag, search,
+  dates), transcript with per-message citations, cost, latency, retrieval
+  score and guardrail flags, plus tags, stars and internal notes.
+- **Human handoff, takeover and reply** (FR-WGT-07, FR-CNV-03) —
+  `HandoffService`, `POST /public/chat/handoff`, and a "Talk to a person"
+  affordance in the widget. The clerk stops answering the moment a person
+  is asked for, staff are emailed, and a colleague's reply reaches the
+  visitor's open panel.
+- **Retention** (FR-CNV-07) — `RetentionService` and a nightly
+  `PurgeConversationsJob` that deletes a bounded batch and re-enqueues
+  itself while a backlog remains. It also drains expired sessions, which
+  closes the gap Sprint 5 left open.
+- **`M0009_ConversationSupervision`** — `starred`, `notes` and
+  `idx_starred` on conversations.
+- **Required disclaimers** (FR-CLK-06) — appended by us, never asked of
+  the model, and streamed as a final delta so what the visitor read and
+  what we stored are the same text.
+- **The tone dials now do something.** `PromptBuilder` turns formality and
+  verbosity into instructions a model can follow rather than a number it
+  cannot.
+- **Admin SPA**: the roster (D11 §4.1), the clerk editor with all six tabs
+  and a permanent test console (D11 §4.2), and the conversations split
+  pane (D11 §5). The Roster rail is live data for the first time.
+- REST: 18 new routes — `/admin/agents` and its lifecycle actions,
+  `/admin/agents/presets`, `/admin/agents/{id}/test`,
+  `/admin/conversations` with takeover, reply, resolve, tags, notes and
+  retention, and `/public/chat/handoff`.
+
+#### Fixed
+
+- **A blocked message never advanced `message_count` in storage.**
+  `ChatService::refuse()` incremented the counter on the in-memory
+  conversation and never saved it, so the row stayed where it was. The
+  conversation cap reads that column on the next request — which means the
+  cheapest messages to send were the ones that never counted toward the
+  limit designed to stop them. Found while adding the handoff path.
+- **A human reply would have been stored with no author.** `messages`
+  has carried a `wp_user_id` column since M0003 and the `Message` entity
+  never had the property, so the repository had nothing to write. Invisible
+  until this sprint, because nothing had ever written a `human_agent` row.
+- **`last_message_at` was stamped on every save.** Tagging or starring a
+  conversation moved it to the top of a list sorted by activity, which is
+  the list an operator uses to find what actually needs a reply. It is now
+  written when a message is stored, by the code storing it.
+- **The migration runner's idempotence was MariaDB-only.** The first draft
+  of M0009 used `ADD COLUMN IF NOT EXISTS`, which MySQL 8 and 9 do not
+  support — it would have applied cleanly on half the hosting landscape
+  and hard-failed on the other half. `Migration` now has `hasColumn()` and
+  `hasIndex()`, which is the only form of "ask first" both engines share.
+- `src/Infrastructure/Wordpress/` is spelled `WordPress/`. PHPCS's
+  `CapitalPDangit` was right; the PHPStan rule's allowlist and CLAUDE.md
+  followed.
+- The roster listed sources with one query per clerk. It renders on every
+  screen in the admin, so that was N+1 on every page load;
+  `sourceCounts()` is one grouped statement.
+
+#### Decisions worth recording
+
+- **Display rules AND together, and exclusions beat inclusions.** The
+  sentence an operator composes in their head is "on product pages, on
+  mobile, for logged-out visitors"; an OR reading of that shows the clerk
+  on every page of the site to anyone holding a phone. Exclusion winning
+  matters for one case above all: a chat panel opening over a checkout
+  form costs a sale, so the rule that removes a page always wins.
+- **Unknown fails open.** Most hosts send no country header, and a rule
+  naming one country would otherwise hide the clerk from the entire site.
+  Same for a device we cannot classify.
+- **Patterns are globs, not regular expressions.** `*` is the only
+  metacharacter and everything else is quoted. Accepting an expression
+  would mean running a customer-supplied pattern on every page view, which
+  is a catastrophic-backtracking hazard for a feature nobody asked for.
+- **The monthly counter rolls over on read, not on a schedule.** A
+  cron-driven reset on a site whose cron does not run — a normal shared
+  host — leaves a clerk permanently exhausted from the month it first hit
+  its cap, and the only symptom the customer sees is a clerk that stopped
+  answering.
+- **A clerk past its budget is still selected by the widget.** It answers
+  with its owner's fallback and can still take an email address. A widget
+  that vanishes mid-month tells the visitor nothing and the operator less.
+- **The test console stores nothing and is still metered.** Writing the
+  operator's experiments into the customer's transcripts would poison
+  their analytics and, later, their lead scoring. Billing them silently
+  would be worse: the call costs money whoever made it, so it is recorded
+  as `UsageKind::Verify` — against the site, not against the clerk's
+  monthly budget, because a budget is a promise about what visitors cost.
+- **The console runs the saved clerk, and says so.** Testing unsaved edits
+  would test a clerk that does not exist; testing the saved one silently
+  while new instructions sit on screen would be worse. It states which and
+  offers to save.
+- **The editor's six tabs are in-page state, not routes** — the one
+  deliberate exception to this codebase's rule that tabs address URLs.
+  They are six views of one unsaved form, and a URL per tab implies each is
+  separately loadable, which would mean discarding what is unsaved in the
+  other five.
+- **A new clerk is always a draft, and publishing is separate and
+  audited.** A clerk that went live as a side effect of being created is
+  one nobody reviewed.
+- **The slug stops following the name after publication.** By then it is
+  in the widget's cached configuration and in whatever the operator
+  embedded on their site.
+- **A copy starts with a fresh budget counter.** Inheriting a month that
+  is 90% spent produces a clerk which stops answering on its first day for
+  reasons its owner cannot see.
+- **The free-tier cap is enforced now, with the licence tier behind a
+  filter.** `LicenceService` is Sprint 9, and writing the gate later would
+  mean writing it against code that had grown around its absence. The tier
+  resolves through `hiveclerk/licence/tier`, so the seam Sprint 9 binds
+  over exists and is exercised by tests today.
+- **Internal notes live in a JSON column; the star is a real column.**
+  Notes are only ever read with their conversation, so a table would buy a
+  join on every transcript view to answer a query nobody makes. The star
+  is filtered on, and a JSON predicate cannot use an index.
+- **The retention cutoff is computed on every run, never stamped on the
+  row.** An operator shortening the policy has usually been asked to
+  delete what already exists; a stamped `purge_after` would apply only to
+  conversations that had not happened yet, which is the opposite of the
+  promise.
+- **A human reply reaches the visitor by polling, and only while a person
+  has the conversation.** There is no push channel to a widget on a
+  full-page-cached page. Eight seconds, only while the panel is open and
+  only while the conversation is with a colleague — a reply nobody sees
+  until they reload is a reply that did not happen.
+- **A colleague's reply carries no thumbs.** The ratings measure how the
+  clerk is answering; letting human replies into that number makes the one
+  quality signal in the product unreadable.
+- **Clerk knowledge is addressed by uuid over the wire.** The knowledge
+  API is uuid-addressed by design, and publishing storage ids as a second
+  way to name a source would undo that for the convenience of one form.
+- **The transcript renders model output as text, in our own admin.** There
+  is no path from a stored message to markup on the operator's screen.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, driven with Playwright and
+`wp eval-file` against the real site.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **345**, 1,643 assertions (40 new) |
+| Integration tests | **14**, 43 assertions (7 new, all SQL) |
+| SEC-04 | **45/45 routes gated**, including the 18 added here |
+| Admin bundle | **145.87 KB** gzipped (budget 350; was 132.46) |
+| Widget bundle | **15.04 KB** gzipped (budget 40; was 14.09) |
+
+- **The handoff loop was driven end to end in a real browser.** A visitor
+  asked a question, pressed *Talk to a person*, and the row went to
+  `handoff_requested` with a timestamp; a colleague took over and replied
+  through `HandoffService`; ten seconds later the widget's poll showed the
+  reply, labelled *From a colleague*. Asserted, not eyeballed: the SQL row,
+  the notice text, and the presence of the `.from-human` element.
+- **Display rules were verified against the live front end.** With
+  `include: ["/products/*"]` the home page served no widget script; with
+  `["/", "/hello-world*"]` the home page served it and `/sample-page/` did
+  not; cleared, every page served it again.
+- **M0009 applied on MySQL 9.3.0** — `starred`, `notes` and `idx_starred`
+  present, database version 9.
+- **The test console ran live**, with retrieval at 21–23 ms and the
+  confidence gate refusing a question the corpus does not cover:
+  `refused_because: "No retrieved chunk reached the 0.70 confidence
+  threshold"`, no provider call, cost 0.
+- **Contrast measured in both themes** on the new editor: active tab 18.60
+  light / 15.73 dark, idle tab 4.83 / 4.83, body 16.15 / 16.43. All above
+  the 4.5:1 floor.
+- **Keyboard walk of the roster**: rail → search → status → role → hire →
+  clerk name → pause → duplicate → retire → open, every stop with a
+  visible focus ring.
+- The purge job, the retention policy's arithmetic, the free-tier cap, the
+  budget roll-over and every display-rule branch are unit-tested; the
+  cascading purge, the JSON columns, the handoff filter and the grouped
+  per-clerk totals are integration-tested against the database.
+
+#### Not delivered this sprint
+
+- **Conversation export** (FR-CNV-06) and **clerk export/import**
+  (D9 §3.2). Neither is in this sprint's stories; both routes are still
+  documented and unimplemented.
+- **Automatic summary and sentiment** (FR-CNV-05). The list falls back to
+  the page title, which is the most useful thing we currently know. The
+  column and the filter are already there for Sprint 9.
+- **The Leads tab is an honest empty state.** `LeadService` is Sprint 7,
+  and a qualification-question box wired to nothing would be worse than an
+  empty tab, because an operator would fill it in and believe it.
+- **The five-host compatibility matrix is still one host** (R-2, D17 §6),
+  unchanged from Sprint 5 and still blocking M2's "4 of 5" criterion.
+- The crawl preview screen (D11 §7.2) and the FAQ editor UI, carried from
+  Sprint 3, are still not built.
+
+#### Known gaps
+
+- **The console's provider-call path was not exercised live.** This
+  development install has no provider key stored, so retrieval fell back
+  to keyword-only ("Embedding unavailable, keyword search only") and every
+  run ended at the confidence gate. The refusal path is verified end to
+  end; the token, cost and completion-time numbers the console reports on
+  a successful run are covered only by unit tests.
+- **`messages.cost` is `NOT NULL DEFAULT 0`.** M0008 made
+  `usage_events.cost` nullable for exactly this reason, and the message
+  column was not included — so a transcript cannot distinguish "this model
+  has no published price" from "this call was free". Both read `$0`.
+- **A human reply can take up to eight seconds to appear**, and each open
+  panel in a handoff costs one REST request per eight seconds. It is the
+  right trade for a widget that may be on a cached page, and it is still a
+  poll.
+- **The handoff email was not verified to arrive.** It goes through
+  `wp_mail()`, which on this machine has no transport. The send result is
+  passed to `hiveclerk/conversation/handoff_notified` rather than
+  swallowed, so a site can find out — but "the email did not arrive" is
+  the failure mode of every handoff feature ever shipped and we have not
+  seen one land.
+- **The nightly purge is scheduled on `admin_init`.** A site whose admin
+  is never opened and whose cron is broken will not purge, and the
+  retention policy will quietly do nothing. The system status screen
+  (Sprint 10) is where that becomes visible.
+- **The app shell's page subtitle measures 4.34:1 in light mode**, under
+  the 4.5 floor. Pre-existing — the same element measures the same on the
+  Sprint 3 screens — and not introduced here, but now confirmed rather
+  than assumed.
+- **Display rules are evaluated per page view with no caching.** The
+  pattern list is bounded at 50 and the work is string matching, so this
+  is cheap rather than free; it has not been profiled.
+- **Notes cannot be searched** and the roster's 30-day totals have not
+  been benchmarked beyond a handful of clerks.
+- **The widget still has no automated test suite.** The handoff path was
+  driven by a real browser by hand, like everything else in it.
+
 ### Sprint 5 — Chat and widget ⚑ M2 gate
 
 **Goal:** a real conversation on a real site.

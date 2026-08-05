@@ -73,4 +73,46 @@ interface ConversationRepositoryInterface {
 	 * @return array<int, Conversation>
 	 */
 	public function awaitingHandoff( int $limit = 20 ): array;
+
+	/**
+	 * Ids of conversations that started before a cutoff, oldest first.
+	 *
+	 * Ids rather than entities: the purge job needs to delete them, not to
+	 * read them, and hydrating a thousand transcripts to throw them away
+	 * is how a retention job runs out of memory on the site with the most
+	 * data to purge.
+	 *
+	 * @param string $cutoff UTC timestamp, Y-m-d H:i:s.
+	 * @param int    $limit  Batch size.
+	 * @return array<int, int>
+	 */
+	public function idsStartedBefore( string $cutoff, int $limit ): array;
+
+	/**
+	 * How many conversations are older than a cutoff.
+	 *
+	 * @param string $cutoff UTC timestamp, Y-m-d H:i:s.
+	 * @return int
+	 */
+	public function countStartedBefore( string $cutoff ): int;
+
+	/**
+	 * Delete a batch of conversations and everything hanging off them.
+	 *
+	 * @param array<int, int> $ids Storage ids.
+	 * @return int Conversations deleted.
+	 */
+	public function purge( array $ids ): int;
+
+	/**
+	 * Per-clerk totals since a date, for the roster cards.
+	 *
+	 * One grouped query rather than one query per clerk: the roster is
+	 * rendered on every screen, and N+1 there is N+1 everywhere.
+	 *
+	 * @param array<int, int> $agentIds Clerks to report on.
+	 * @param string          $since    UTC timestamp, Y-m-d H:i:s.
+	 * @return array<int, array{conversations: int, resolved: int, handoffs: int, cost: float}>
+	 */
+	public function statsForAgents( array $agentIds, string $since ): array;
 }

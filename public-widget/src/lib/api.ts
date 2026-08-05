@@ -120,10 +120,54 @@ export class Api {
     writeStore(TRANSPORT_KEY, transport);
   }
 
+  /**
+   * Ask for a person (FR-WGT-07).
+   *
+   * Returns whether the request was accepted. Repeating it is safe: the
+   * server treats a second ask as the same ask, so a visitor pressing the
+   * button twice does not email the site owner twice.
+   */
+  async handoff(): Promise<boolean> {
+    if (!this.session) {
+      return false;
+    }
+
+    const response = await fetch(`${this.boot.rest_url}/public/chat/handoff`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-HVC-Session': this.session.token,
+      },
+      body: JSON.stringify({ url: window.location.href }),
+    });
+
+    if (response.status === 401) {
+      this.forget();
+    }
+
+    return response.ok;
+  }
+
   /** Restore the transcript after a page navigation. */
   async history(): Promise<ChatMessage[]> {
+    return (await this.transcript()).messages;
+  }
+
+  /**
+   * The transcript and what state the conversation is in.
+   *
+   * The status rides along with the messages because the widget needs
+   * both at exactly the same moments — on open, and on every poll while a
+   * colleague is answering — and two round trips for one screen state is
+   * one more than the visitor's connection deserves.
+   */
+  async transcript(): Promise<{
+    messages: ChatMessage[];
+    awaitingHuman: boolean;
+    humanActive: boolean;
+  }> {
     if (!this.session) {
-      return [];
+      return { messages: [], awaitingHuman: false, humanActive: false };
     }
 
     const response = await fetch(`${this.boot.rest_url}/public/chat/history`, {
@@ -135,7 +179,7 @@ export class Api {
         this.forget();
       }
 
-      return [];
+      return { messages: [], awaitingHuman: false, humanActive: false };
     }
 
     const body = (await response.json()) as {
@@ -143,20 +187,28 @@ export class Api {
         messages: Array<{
           id: string;
           role: 'visitor' | 'clerk';
+          from_human?: boolean;
           text: string;
           citations: Citation[];
           rating: number | null;
         }>;
+        awaiting_human?: boolean;
+        status?: string;
       };
     };
 
-    return body.data.messages.map((message) => ({
-      id: message.id,
-      role: message.role,
-      text: message.text,
-      citations: message.citations ?? [],
-      rating: message.rating === 1 ? 1 : message.rating === -1 ? -1 : null,
-    }));
+    return {
+      messages: body.data.messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        text: message.text,
+        citations: message.citations ?? [],
+        fromHuman: message.from_human === true,
+        rating: message.rating === 1 ? 1 : message.rating === -1 ? -1 : null,
+      })),
+      awaitingHuman: body.data.awaiting_human === true,
+      humanActive: body.data.status === 'handoff_active',
+    };
   }
 
   /** Record a thumbs up or down. */

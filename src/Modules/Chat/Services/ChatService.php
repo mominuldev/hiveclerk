@@ -9,6 +9,8 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Modules\Chat\Services;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use Hiveclerk\Ai\AiServiceInterface;
 use Hiveclerk\Ai\ProviderException;
 use Hiveclerk\Ai\StreamEvent;
@@ -98,6 +100,33 @@ final class ChatService {
 		ChatSink $sink,
 		array $context = array()
 	): ChatOutcome {
+		if ( ! $conversation->acceptsAiReplies() ) {
+			// A person is on this conversation, or has been asked for. The
+			// visitor's words are still stored — they are what the
+			// colleague is going to read — but the clerk does not answer
+			// over the top of a request to speak to someone.
+			$this->store( $conversation, MessageRole::Visitor, $message, array( 'awaiting_human' ) );
+			$this->conversations->save( $conversation );
+
+			$sink->done(
+				array(
+					'message_id'     => null,
+					'tokens_in'      => 0,
+					'tokens_out'     => 0,
+					'grounded'       => false,
+					'lead_captured'  => false,
+					'awaiting_human' => true,
+				)
+			);
+
+			return new ChatOutcome(
+				messageId: '',
+				text: '',
+				flags: array( 'awaiting_human' ),
+				blocked: true
+			);
+		}
+
 		$input = $this->guardrails->validateInput( $agent, $message );
 
 		if ( ! $input->allowed ) {
@@ -124,7 +153,7 @@ final class ChatService {
 			);
 		}
 
-		if ( $agent->hasExhaustedBudget() ) {
+		if ( $agent->isBudgetBlocked() ) {
 			$this->store( $conversation, MessageRole::Visitor, $message, $flags );
 
 			// The visitor is shown the clerk's own fallback, not an error.
@@ -291,6 +320,21 @@ final class ChatService {
 			$sink->replace( $text );
 		}
 
+		$disclaimer = $agent->disclaimer();
+
+		if ( ! $blocked && null !== $disclaimer && '' !== $text ) {
+			// Appended by us rather than asked of the model. A required
+			// disclaimer is a legal instrument; a model instructed to end
+			// every reply with one complies almost always, and "almost" is
+			// not a property to attach to a VAT notice. Sent as a final
+			// delta so what the visitor read and what we stored match.
+			$text .= "\n\n" . $disclaimer;
+
+			if ( ! $aborted ) {
+				$sink->delta( "\n\n" . $disclaimer );
+			}
+		}
+
 		$citations = $blocked ? array() : $this->citationsFor( $agent, $prompt );
 		$tokensIn  = null !== $finished ? $finished->tokensIn : 0;
 		$tokensOut = null !== $finished ? $finished->tokensOut : 0;
@@ -403,6 +447,13 @@ final class ChatService {
 			)
 		);
 
+		// A refusal costs nothing and still happened. Persisting the
+		// conversation here is what advances message_count in storage, and
+		// without it the conversation cap never counts a blocked message —
+		// so the cheapest messages to send are the ones that never hit the
+		// limit designed to stop them.
+		$this->conversations->save( $conversation );
+
 		$sink->done(
 			array(
 				'message_id'    => $uuid->value,
@@ -460,6 +511,7 @@ final class ChatService {
 		$saved = $this->messages->save( $message );
 
 		++$conversation->messageCount;
+		$conversation->lastMessageAt = new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) );
 
 		return $saved;
 	}

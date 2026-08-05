@@ -41,6 +41,13 @@ final class InMemoryAgents implements AgentRepositoryInterface {
 	 */
 	public array $agents = array();
 
+	/**
+	 * Reset timestamps passed to resetUsage().
+	 *
+	 * @var array<int, string>
+	 */
+	public array $resets = array();
+
 	public function find( int $id ): ?Agent {
 		return $this->agents[ $id ] ?? null;
 	}
@@ -65,12 +72,22 @@ final class InMemoryAgents implements AgentRepositoryInterface {
 		return null;
 	}
 
-	public function paginate( Pagination $pagination, ?AgentStatus $status = null ): array {
-		return array_values( $this->agents );
+	public function paginate( Pagination $pagination, array $filters = array() ): array {
+		return array_values( $this->filtered( $filters ) );
 	}
 
-	public function count( ?AgentStatus $status = null ): int {
-		return count( $this->agents );
+	public function count( array $filters = array() ): int {
+		return count( $this->filtered( $filters ) );
+	}
+
+	public function slugTaken( string $slug, ?int $exceptId = null ): bool {
+		foreach ( $this->agents as $agent ) {
+			if ( $agent->slug === $slug && $agent->id !== $exceptId ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	public function published(): array {
@@ -100,7 +117,50 @@ final class InMemoryAgents implements AgentRepositoryInterface {
 		$this->sources[] = $sourceId;
 	}
 
+	public function sourceCounts( array $agentIds ): array {
+		$counts = array();
+
+		foreach ( $agentIds as $agentId ) {
+			$counts[ (int) $agentId ] = count( $this->sources );
+		}
+
+		return $counts;
+	}
+
+	public function syncSources( int $agentId, array $sourceIds ): void {
+		$this->sources = array_values( array_map( 'intval', $sourceIds ) );
+	}
+
 	public function incrementUsage( int $id, int $tokens ): void {
 		$this->charged += $tokens;
+	}
+
+	public function resetUsage( int $id, string $resetAt ): void {
+		$agent = $this->agents[ $id ] ?? null;
+
+		if ( null === $agent ) {
+			return;
+		}
+
+		$agent->tokensUsedMonth = 0;
+		$this->resets[]         = $resetAt;
+	}
+
+	/**
+	 * Clerks matching a status filter.
+	 *
+	 * @param array<string, mixed> $filters Filters.
+	 * @return array<int, Agent>
+	 */
+	private function filtered( array $filters ): array {
+		$status = isset( $filters['status'] ) && is_string( $filters['status'] )
+			? AgentStatus::tryFrom( $filters['status'] )
+			: null;
+
+		if ( null === $status ) {
+			return $this->agents;
+		}
+
+		return array_filter( $this->agents, static fn ( Agent $agent ): bool => $agent->status === $status );
 	}
 }

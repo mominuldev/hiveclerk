@@ -37,7 +37,7 @@ final class NoGlobalWpdbRule implements Rule {
 	 */
 	private const ALLOWED_PATHS = array(
 		'/src/Database/',
-		'/src/Infrastructure/Wordpress/',
+		'/src/Infrastructure/WordPress/',
 		'/uninstall.php',
 	);
 

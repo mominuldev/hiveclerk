@@ -14,6 +14,7 @@ use Hiveclerk\Api\Response\ApiResponse;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Domain\Conversation\Citation;
 use Hiveclerk\Domain\Conversation\CitationRepositoryInterface;
+use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
 use Hiveclerk\Domain\Conversation\Message;
 use Hiveclerk\Domain\Conversation\MessageRepositoryInterface;
 use Hiveclerk\Domain\Conversation\MessageRole;
@@ -61,13 +62,15 @@ final class HistoryController extends PublicController {
 	 * @param SessionService              $sessions  Session validation.
 	 * @param RateLimiter                 $limiter   Rate limiter.
 	 * @param MessageRepositoryInterface  $messages  Message storage.
-	 * @param CitationRepositoryInterface $citations Citation storage.
+	 * @param CitationRepositoryInterface     $citations     Citation storage.
+	 * @param ConversationRepositoryInterface $conversations Conversation storage.
 	 */
 	public function __construct(
 		SessionService $sessions,
 		RateLimiter $limiter,
 		private readonly MessageRepositoryInterface $messages,
-		private readonly CitationRepositoryInterface $citations
+		private readonly CitationRepositoryInterface $citations,
+		private readonly ConversationRepositoryInterface $conversations
 	) {
 		parent::__construct( $sessions, $limiter );
 	}
@@ -152,6 +155,11 @@ final class HistoryController extends PublicController {
 			$payload[] = array(
 				'id'         => $message->uuid->value,
 				'role'       => MessageRole::Visitor === $message->role ? 'visitor' : 'clerk',
+				// A reply from a person is still shown in the clerk's lane —
+				// it is the same conversation — but the visitor is told a
+				// human wrote it. Passing it off as the clerk would be the
+				// product lying about who they are talking to.
+				'from_human' => MessageRole::HumanAgent === $message->role,
 				'text'       => $message->content,
 				'created_at' => null === $message->createdAt ? null : $message->createdAt->format( DATE_ATOM ),
 				'rating'     => $message->rating,
@@ -159,7 +167,15 @@ final class HistoryController extends PublicController {
 			);
 		}
 
-		return ApiResponse::ok( array( 'messages' => $payload ) );
+		$conversation = $this->conversations->find( $session->conversationId );
+
+		return ApiResponse::ok(
+			array(
+				'messages'       => $payload,
+				'status'         => null === $conversation ? 'active' : $conversation->status->value,
+				'awaiting_human' => null !== $conversation && ! $conversation->acceptsAiReplies(),
+			)
+		);
 	}
 
 	/**

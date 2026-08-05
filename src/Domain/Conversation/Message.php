@@ -34,6 +34,7 @@ final class Message {
 	 * @param float|null             $retrievalScore Best chunk score.
 	 * @param bool                   $isGrounded     Supported by a citation.
 	 * @param int|null               $rating         Visitor feedback, -1 or 1.
+	 * @param int|null               $wpUserId       Staff member who wrote it, for a human reply.
 	 * @param DateTimeImmutable|null $createdAt      Creation time, UTC.
 	 * @param array<int, string>     $guardrailFlags What the guardrails noticed.
 	 */
@@ -52,6 +53,7 @@ final class Message {
 		public ?float $retrievalScore = null,
 		public bool $isGrounded = false,
 		public ?int $rating = null,
+		public ?int $wpUserId = null,
 		public ?DateTimeImmutable $createdAt = null,
 		public array $guardrailFlags = array(),
 	) {

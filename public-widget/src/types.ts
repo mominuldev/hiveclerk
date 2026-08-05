@@ -47,6 +47,8 @@ export interface ChatMessage {
   role: 'visitor' | 'clerk';
   text: string;
   citations: Citation[];
+  /** Written by a person who took the conversation over, not by the clerk. */
+  fromHuman?: boolean;
   /** True while tokens are still arriving. */
   streaming?: boolean;
   /** Set when the exchange failed; the widget offers a retry. */

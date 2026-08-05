@@ -2,6 +2,7 @@ import type {
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
+  TextareaHTMLAttributes,
 } from 'react';
 import { useId } from 'react';
 import { AlertCircle } from 'lucide-react';
@@ -87,6 +88,33 @@ export function Input({ invalid, mono, className, ...rest }: InputProps) {
         CONTROL,
         'h-9',
         mono && 'font-mono text-[13px]',
+        invalid && 'border-danger',
+        className
+      )}
+      aria-invalid={invalid || undefined}
+      {...rest}
+    />
+  );
+}
+
+interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  invalid?: boolean;
+}
+
+/**
+ * A multi-line control.
+ *
+ * Vertical resize only. Horizontal resize inside a form column breaks the
+ * layout around it, and nobody has ever wanted a wider instructions box
+ * more than they wanted a taller one.
+ */
+export function Textarea({ invalid, className, rows = 6, ...rest }: TextareaProps) {
+  return (
+    <textarea
+      rows={rows}
+      className={cn(
+        CONTROL,
+        'resize-y py-2 leading-relaxed',
         invalid && 'border-danger',
         className
       )}

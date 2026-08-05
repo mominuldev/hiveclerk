@@ -7,6 +7,9 @@ import { Settings } from '@/routes/settings/Settings';
 import { Providers } from '@/routes/settings/Providers';
 import { AuditLog } from '@/routes/settings/AuditLog';
 import { Knowledge } from '@/routes/knowledge/Knowledge';
+import { Clerks } from '@/routes/clerks/Clerks';
+import { ClerkEditor } from '@/routes/clerks/ClerkEditor';
+import { Conversations } from '@/routes/conversations/Conversations';
 import { KnowledgeShell } from '@/routes/knowledge/KnowledgeShell';
 import { Playground } from '@/routes/knowledge/Playground';
 import { EmbeddingSettings } from '@/routes/knowledge/EmbeddingSettings';
@@ -34,13 +37,6 @@ const client = new QueryClient({
 });
 
 const SCAFFOLDED = [
-  {
-    path: 'conversations',
-    area: 'Conversations',
-    sprint: 'Sprint 6',
-    summary:
-      'Transcripts with inline citations, cost per message, and human takeover.',
-  },
   {
     path: 'leads',
     area: 'Leads',
@@ -77,6 +73,9 @@ export function App() {
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="clerks" element={<Clerks />} />
+            <Route path="clerks/:uuid" element={<ClerkEditor />} />
+            <Route path="conversations" element={<Conversations />} />
             <Route path="knowledge" element={<KnowledgeShell />}>
               {/* Redirect rather than an index element, so the tab bar
                   always has an active tab and a bookmarked /knowledge

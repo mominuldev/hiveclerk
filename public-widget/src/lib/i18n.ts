@@ -26,6 +26,10 @@ export interface Strings {
   offline: string;
   expired: string;
   subtitle: string;
+  askHuman: string;
+  waitingHuman: string;
+  humanHere: string;
+  fromHuman: string;
 }
 
 const EN: Strings = {
@@ -44,6 +48,10 @@ const EN: Strings = {
   offline: "That didn't send. Check your connection and try again.",
   expired: 'This conversation timed out. Reload the page to start a new one.',
   subtitle: 'Usually replies instantly',
+  askHuman: 'Talk to a person',
+  waitingHuman: 'Waiting for a colleague. You can keep typing — they will see it.',
+  humanHere: 'A colleague is answering. You can keep typing.',
+  fromHuman: 'From a colleague',
 };
 
 /**

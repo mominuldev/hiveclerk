@@ -11,7 +11,9 @@ namespace Hiveclerk\Modules\Chat\Services;
 
 use Hiveclerk\Domain\Agent\Agent;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
+use Hiveclerk\Domain\Agent\PageContext;
 use Hiveclerk\Domain\Shared\Uuid;
+use Hiveclerk\Infrastructure\WordPress\PageContextFactory;
 
 /**
  * The one place that decides what a visitor's browser is allowed to know.
@@ -30,34 +32,53 @@ final class WidgetConfig {
 	/**
 	 * Construct.
 	 *
-	 * @param AgentRepositoryInterface $agents Clerk storage.
+	 * @param AgentRepositoryInterface $agents   Clerk storage.
+	 * @param PageContextFactory       $pages    Describes the current page.
 	 */
 	public function __construct(
-		private readonly AgentRepositoryInterface $agents
+		private readonly AgentRepositoryInterface $agents,
+		private readonly PageContextFactory $pages
 	) {
 	}
 
 	/**
 	 * The clerk that should serve this request, if any.
 	 *
-	 * Display-rule evaluation (FR-CLK-07) lands in Sprint 6. Until then the
-	 * rule is "published and within budget", and a site with several
-	 * published clerks gets the oldest — stated here rather than left to be
-	 * discovered, because it is a real limitation and not a subtlety.
+	 * Display rules decide (FR-CLK-07). Where several published clerks all
+	 * accept the page, the oldest wins — a deterministic answer rather
+	 * than a clever one, so that a visitor who reloads gets the same clerk
+	 * and a support conversation about "which clerk answered" has an
+	 * answer. Narrowing a clerk's rules is how an operator changes it.
 	 *
-	 * @param Uuid|null $requested Specific clerk asked for.
+	 * A clerk past its token budget is still selected. It answers with its
+	 * owner's fallback message and can still take an email address, and a
+	 * widget that vanishes mid-month tells the visitor nothing and the
+	 * operator less.
+	 *
+	 * @param Uuid|null        $requested Specific clerk asked for.
+	 * @param PageContext|null $context   The page being served; built from the request when absent.
 	 * @return Agent|null
 	 */
-	public function select( ?Uuid $requested = null ): ?Agent {
+	public function select( ?Uuid $requested = null, ?PageContext $context = null ): ?Agent {
+		$context ??= $this->pages->current();
+
 		if ( null !== $requested ) {
 			$agent = $this->agents->findByUuid( $requested );
 
+			// An explicitly requested clerk still has to be on duty, but
+			// its display rules are not applied: asking for a named clerk
+			// is what a shortcode does, and the page it was placed on is
+			// the operator's answer to "where should this appear".
 			return ( null !== $agent && $agent->status->isServing() ) ? $agent : null;
 		}
 
-		$published = $this->agents->published();
+		foreach ( $this->agents->published() as $agent ) {
+			if ( $agent->appearsOn( $context ) ) {
+				return $agent;
+			}
+		}
 
-		return array() === $published ? null : $published[0];
+		return null;
 	}
 
 	/**
@@ -95,7 +116,7 @@ final class WidgetConfig {
 				// and only the visitor's own connection can say whether
 				// anything between here and there buffers it.
 				'streaming' => true,
-				'handoff'   => false,
+				'handoff'   => true,
 				'feedback'  => true,
 			),
 			'consent'      => array(

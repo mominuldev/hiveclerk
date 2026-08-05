@@ -26,6 +26,13 @@ final class InMemoryConversations implements ConversationRepositoryInterface {
 	 */
 	public array $saved = array();
 
+	/**
+	 * Ids passed to purge().
+	 *
+	 * @var array<int, int>
+	 */
+	public array $purged = array();
+
 	public function find( int $id ): ?Conversation {
 		return $this->saved[ $id ] ?? null;
 	}
@@ -62,6 +69,45 @@ final class InMemoryConversations implements ConversationRepositoryInterface {
 	}
 
 	public function awaitingHandoff( int $limit = 20 ): array {
+		return array();
+	}
+
+	public function idsStartedBefore( string $cutoff, int $limit ): array {
+		$ids = array();
+
+		foreach ( $this->saved as $id => $conversation ) {
+			if ( null !== $conversation->startedAt && $conversation->startedAt->format( 'Y-m-d H:i:s' ) < $cutoff ) {
+				$ids[] = $id;
+			}
+
+			if ( count( $ids ) >= $limit ) {
+				break;
+			}
+		}
+
+		return $ids;
+	}
+
+	public function countStartedBefore( string $cutoff ): int {
+		return count( $this->idsStartedBefore( $cutoff, PHP_INT_MAX ) );
+	}
+
+	public function purge( array $ids ): int {
+		$deleted = 0;
+
+		foreach ( $ids as $id ) {
+			if ( isset( $this->saved[ $id ] ) ) {
+				unset( $this->saved[ $id ] );
+				++$deleted;
+			}
+		}
+
+		$this->purged = array_merge( $this->purged, $ids );
+
+		return $deleted;
+	}
+
+	public function statsForAgents( array $agentIds, string $since ): array {
 		return array();
 	}
 }

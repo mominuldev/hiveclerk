@@ -274,6 +274,12 @@ final class MessageController extends PublicController {
 				'citations'  => is_array( $state['citations'] ?? null ) ? $state['citations'] : array(),
 				'message_id' => is_string( $state['message_id'] ?? null ) ? $state['message_id'] : null,
 				'error'      => is_array( $state['error'] ?? null ) ? $state['error'] : null,
+				// The closing metadata, forwarded whole. The polling
+				// transport has to be able to learn everything the
+				// streaming one learns from its `done` frame, or the two
+				// paths start behaving differently on the hosts that can
+				// only use this one.
+				'done'       => is_array( $state['done'] ?? null ) ? $state['done'] : array(),
 			)
 		);
 	}

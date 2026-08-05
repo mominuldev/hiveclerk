@@ -281,6 +281,43 @@ button {
   padding: 6px 2px 0;
 }
 
+/* A person has this conversation now. Styled as a note rather than as a
+   message, because nobody wrote it — it is the state of the room. */
+.notice {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--hvc-text-secondary);
+  background: var(--hvc-surface-sunken);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-top: 4px;
+}
+
+.from-human {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hvc-text-tertiary);
+  margin-bottom: 4px;
+}
+
+.handoff {
+  align-self: flex-start;
+  margin: 0 14px 4px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--hvc-text-secondary);
+  background: transparent;
+  border: 1px solid var(--hvc-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.handoff:hover { color: var(--hvc-text); border-color: var(--hvc-text-tertiary); }
+.handoff:focus-visible { outline: 2px solid var(--hvc-brand); outline-offset: 2px; }
+
 .sr-only {
   position: absolute;
   width: 1px;
