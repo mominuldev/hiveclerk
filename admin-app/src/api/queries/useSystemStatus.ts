@@ -53,7 +53,22 @@ export interface SystemHealth {
   cron: {
     scheduled: number;
     overdue: number;
-    events: { hook: string; next_run: string; is_late: boolean }[];
+    /**
+     * Jobs that are being scheduled but not answered.
+     *
+     * Distinct from `overdue`, which counts jobs whose next run has passed.
+     * A stalled job's next run keeps advancing perfectly — rescheduling
+     * happens whether or not a callback existed — so it looks healthy by
+     * every measure except whether anything ever ran.
+     */
+    stalled: number;
+    events: {
+      hook: string;
+      next_run: string;
+      is_late: boolean;
+      last_run: string | null;
+      is_stalled: boolean;
+    }[];
   };
   providers: {
     provider: string;

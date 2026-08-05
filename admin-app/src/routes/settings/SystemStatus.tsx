@@ -34,7 +34,10 @@ export function SystemStatus() {
 
   return (
     <div className="space-y-5">
-      {(migrationPending || data.cron.overdue > 0 || data.database.missing.length > 0) && (
+      {(migrationPending ||
+        data.cron.overdue > 0 ||
+        data.cron.stalled > 0 ||
+        data.database.missing.length > 0) && (
         <div
           className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-content"
           role="status"
@@ -63,6 +66,17 @@ export function SystemStatus() {
                 {1 === data.cron.overdue ? 'job is' : 'jobs are'} more than an hour
                 late. On a quiet site WP-Cron only fires when somebody visits — a
                 real cron entry hitting wp-cron.php fixes it.
+              </p>
+            )}
+            {data.cron.stalled > 0 && (
+              <p>
+                {data.cron.stalled} scheduled{' '}
+                {1 === data.cron.stalled ? 'job is' : 'jobs are'} being rescheduled
+                but never actually running. The times below will keep looking
+                correct, because WordPress books the next run whether or not
+                anything answered the last one. The usual cause is cron running
+                under a different PHP version from the site — check that the
+                PHP your cron entry uses is the same one the site runs on.
               </p>
             )}
           </div>
@@ -146,11 +160,30 @@ export function SystemStatus() {
                 <span
                   className={cn(
                     'text-xs',
-                    event.is_late ? 'text-warning' : 'text-content-tertiary'
+                    event.is_stalled || event.is_late
+                      ? 'text-warning'
+                      : 'text-content-tertiary'
                   )}
                 >
-                  {event.is_late ? 'Overdue since ' : 'Next '}
-                  {event.next_run} UTC
+                  {/*
+                    Last run leads when a job has stalled, because the next-run
+                    time is the misleading half: it advances on schedule while
+                    nothing happens. Showing "Next 14:20" first would be
+                    reassuring and wrong.
+                  */}
+                  {event.is_stalled
+                    ? `${
+                        event.last_run
+                          ? `Last ran ${event.last_run} UTC`
+                          : 'Has never run'
+                      } · still scheduled for ${event.next_run} UTC`
+                    : `${event.is_late ? 'Overdue since ' : 'Next '}${event.next_run} UTC`}
+                  {!event.is_stalled && event.last_run && (
+                    <span className="text-content-tertiary">
+                      {' '}
+                      · last ran {event.last_run} UTC
+                    </span>
+                  )}
                 </span>
               </li>
             ))}
