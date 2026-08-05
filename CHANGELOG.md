@@ -93,6 +93,16 @@ had stopped gating.
 
 #### Added
 
+- **The licence server's Ed25519 public key is baked into the build**
+  (`LicenceSignature::RELEASE_PUBLIC_KEY`), so verification is active on a
+  released install rather than skipping. It was absent for the length of one
+  entry above, during which the plugin carried a verification path that
+  never ran and reported itself protected while trusting TLS alone. Baked
+  rather than fetched: a key retrieved at runtime is one an attacker who can
+  already interfere with the response can also replace, which would make the
+  check circular. Overridable per install with
+  `HIVECLERK_LICENCE_PUBLIC_KEY` or the `hiveclerk/licence/public_key`
+  filter, which is how a staging environment points at its own server.
 - **`Infrastructure\Http\SafeRedirectFollower`** — per-hop redirect
   following with the SSRF guard on each URL, method downgrade on anything
   that is not a 307/308, and a hop ceiling matching WordPress's own.
@@ -171,6 +181,14 @@ Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
   unknown key, revoked key, expired key, seat limit, a seat released
   elsewhere, and a forged "you are Agency now" response that was correctly
   ignored while the customer kept the Pro entitlements they already had.
+- **Every tier and every status was then exercised against the renamed
+  server with the baked key doing the verification** — 66 assertions. All
+  four paid tiers (`pro`, `managed`, `business`, `agency`) with their seat
+  count, chunk cap, clerk cap and all five feature gates asserted per tier;
+  and all six statuses, including a Business licence correctly accepting its
+  fifth seat and refusing a sixth. The public key was deliberately *not*
+  filtered, so a mismatch between what the server signs with and what the
+  plugin ships would have failed the run rather than reaching a customer.
 - **The SSRF finding was demonstrated before it was fixed.**
   `wp_http_validate_url()` and `OutboundUrlGuard` were run side by side over
   seven addresses; link-local was the one they disagreed about, in the
@@ -217,14 +235,20 @@ Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
   production.** The form was exercised by creating rows through the
   repository; the screen itself has been rendered but not driven end to end
   by a person.
-- **The Ed25519 public key is not yet baked into a release.** Verification
-  is live and tested, but until `HIVECLERK_LICENCE_PUBLIC_KEY` ships with a
-  build, every install skips the check and falls back to trusting TLS —
-  which is the documented degradation, and also means the control is not
-  actually protecting anybody yet.
-- **Key rotation has no story.** Removing the server's keypair invalidates
+- **A throttled activation is indistinguishable from no activation.** The
+  licence server answers a rate-limited `activate` with `unreachable`, which
+  `LicenceService::activate()` handles by returning the *previous* state
+  untouched and discarding the server's message. That is the right thing to
+  do with the entitlements and the wrong thing to do with the explanation:
+  an operator who pastes a valid key while throttled sees their old licence
+  state and no indication why. Found by tripping the limiter accidentally
+  while writing the tier tests, where it silently made ten assertions check
+  the previous licence instead of the one just issued.
+- **Key rotation has no story.** Rotating the server's keypair invalidates
   every public key already shipped, and there is no second-key window to
-  roll through.
+  roll through. Because a failed verification reports as `unreachable`, a
+  botched rotation does not break customers — it silently stops protecting
+  them, which is harder to notice.
 - **Licence keys are stored in plaintext on the server.** Deliberate — a
   hashed key cannot be read back to a customer who lost theirs — but it
   means a database dump of the licence server is a list of working keys.

@@ -130,13 +130,32 @@ final class LicenceSignatureTest extends TestCase {
 		self::assertFalse( LicenceSignature::verify( $body, time() + 86400 ) );
 	}
 
-	public function testVerificationIsSkippedWhenNoKeyIsConfigured(): void {
+	public function testTheShippedBuildCarriesAUsablePublicKey(): void {
 		Monkey\tearDown();
 		Monkey\setUp();
 		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $value ) => $value );
 
-		// Defence in depth behind TLS: an install with no key configured
-		// must keep working rather than fail every check closed.
+		/*
+		 * The whole control depends on this constant being present and being
+		 * a real Ed25519 key. It was absent for one release, during which
+		 * verification silently skipped on every install and the plugin
+		 * reported itself protected while trusting TLS alone. A truncated or
+		 * mistyped key fails the same way — `publicKey()` returns an empty
+		 * string for anything that is not exactly 32 bytes — so the length is
+		 * what this asserts, not merely that something is set.
+		 */
+		self::assertTrue( LicenceSignature::isConfigured() );
+	}
+
+	public function testVerificationIsSkippedWhenTheKeyIsFilteredAway(): void {
+		Monkey\tearDown();
+		Monkey\setUp();
+		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $value ) => '' );
+
+		// Defence in depth behind TLS: an install pointed at a licence server
+		// whose key it does not hold must keep working rather than fail every
+		// check closed. Reachable now only by deliberately clearing the key,
+		// which is what a staging environment does.
 		self::assertFalse( LicenceSignature::isConfigured() );
 		self::assertTrue( LicenceSignature::verify( array( 'status' => 'active' ), time() ) );
 	}

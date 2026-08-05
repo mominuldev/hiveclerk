@@ -52,6 +52,28 @@ final class LicenceSignature {
 	private const MAX_AGE = 900;
 
 	/**
+	 * The licence server's Ed25519 public key, as shipped.
+	 *
+	 * Safe to publish — it can only verify. This is the half of the pair the
+	 * plugin needs and the half an attacker gains nothing from; the licence
+	 * server holds the other half and is the only thing that can sign.
+	 *
+	 * Baked in rather than fetched. A key retrieved at runtime is a key an
+	 * attacker who can already interfere with the response can also replace,
+	 * which would make the whole check circular — the point of shipping it
+	 * inside the plugin is that it arrives by a path the licence response
+	 * cannot influence.
+	 *
+	 * Rotating this means shipping a plugin release. There is deliberately no
+	 * second-key window: until one exists, a rotation breaks verification for
+	 * every install that has not updated, and because a failed verification
+	 * reports as `unreachable` they keep working rather than downgrading.
+	 * That is survivable and it is not free, so the key is not to be changed
+	 * casually.
+	 */
+	private const RELEASE_PUBLIC_KEY = 'lk+YKEx7iqg48b0BIHPfJ0PqWAJ0NqhXdOszua7owJM=';
+
+	/**
 	 * Whether a public key is configured at all.
 	 *
 	 * @return bool
@@ -131,7 +153,9 @@ final class LicenceSignature {
 	 * @return string
 	 */
 	private static function publicKey(): string {
-		$configured = defined( 'HIVECLERK_LICENCE_PUBLIC_KEY' ) ? (string) constant( 'HIVECLERK_LICENCE_PUBLIC_KEY' ) : '';
+		$configured = defined( 'HIVECLERK_LICENCE_PUBLIC_KEY' )
+			? (string) constant( 'HIVECLERK_LICENCE_PUBLIC_KEY' )
+			: self::RELEASE_PUBLIC_KEY;
 
 		/**
 		 * Filter the licence server's Ed25519 public key, base64 encoded.
