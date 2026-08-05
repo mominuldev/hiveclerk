@@ -67,6 +67,56 @@ final class RetrievalService implements RetrievalServiceInterface {
 	private const KEYWORD_LIMIT = 200;
 
 	/**
+	 * What a keyword rank is worth against a vector rank.
+	 *
+	 * ## Why this is not 1.0
+	 *
+	 * Equal weighting was measured and it costs recall. Over the 54-question
+	 * evaluation set, unweighted fusion scored 0.815 recall@5 and vector
+	 * search alone scored 0.870: of the ten questions fusion missed, six came
+	 * back with the keyword arm switched off entirely.
+	 *
+	 * The failure is one-directional and worth stating precisely, because it
+	 * is not what hybrid search is supposed to do. RRF only sees orderings,
+	 * so a chunk that ranks first on keyword contributes exactly as much as
+	 * one that ranks first on cosine — however poor its semantic match
+	 * actually is. Long documents are full of common words and MySQL's
+	 * FULLTEXT rewards them, so the chunks that win on keyword are
+	 * systematically the ones that deserve it least. "What margin does a
+	 * stockist make?" retrieves the right page first at cosine 0.81 on the
+	 * vector arm; unweighted fusion promoted three chunks of our own
+	 * monetisation deliverable at cosine 0.69–0.70 and pushed the answer out
+	 * of the top five.
+	 *
+	 * Weighting keeps the thing keyword is genuinely for — a part number, an
+	 * SKU, an error code, anything where the exact string is the answer and
+	 * the embedding has nothing to grip — while stopping a lexical
+	 * coincidence from displacing a strong semantic match. Keyword can add;
+	 * it can no longer outvote.
+	 *
+	 * ## How the value was chosen
+	 *
+	 * Swept over a two-thirds sample of the question set and confirmed
+	 * against the held-out third, rather than fitted to all 54 — a retrieval
+	 * constant tuned on the data it is then reported against is a number that
+	 * improves without the product improving. The split is every third
+	 * question rather than a contiguous slice, because the set is grouped by
+	 * page and a contiguous split measures generalisation across subject
+	 * matter instead of across questions.
+	 *
+	 * On the held-out third, recall@5 went from 0.833 to 0.889 and MRR from
+	 * 0.727 to 0.819. Across the whole set, 0.815 to 0.889 and 0.698 to
+	 * 0.765 — better than unweighted fusion *and* better than vector alone
+	 * (0.870 / 0.615) on both measures, which is the outcome hybrid search
+	 * is supposed to produce and previously did not.
+	 *
+	 * **This does not reach the M1 floor of 0.90.** 48 of 54 is short by one
+	 * question. The gate is still failing; it is failing by less, for a
+	 * reason that is understood.
+	 */
+	private const KEYWORD_WEIGHT = 0.2;
+
+	/**
 	 * Construct.
 	 *
 	 * @param EmbeddingService                   $embeddings Query embedding.
@@ -247,7 +297,22 @@ final class RetrievalService implements RetrievalServiceInterface {
 			$bm25[ $match['chunk_id'] ] = $match['score'];
 		}
 
-		$fused = ReciprocalRankFusion::fuse( array( $vectorIds, $keywordIds ) );
+		/**
+		 * Filter the weight the keyword arm carries in fusion.
+		 *
+		 * The vector arm is always 1.0. A site whose content is mostly
+		 * part numbers, SKUs or error codes — where the exact string is
+		 * the answer and the embedding has little to work with — can raise
+		 * this; a site of ordinary prose should not need to.
+		 *
+		 * @param float $weight Keyword weight, relative to the vector arm.
+		 */
+		$keywordWeight = (float) apply_filters( 'hiveclerk/retrieval/keyword_weight', self::KEYWORD_WEIGHT );
+
+		$fused = ReciprocalRankFusion::fuse(
+			array( $vectorIds, $keywordIds ),
+			array( 1.0, max( 0.0, $keywordWeight ) )
+		);
 
 		if ( array() === $fused ) {
 			return array();

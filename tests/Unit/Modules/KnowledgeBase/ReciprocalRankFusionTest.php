@@ -75,8 +75,8 @@ final class ReciprocalRankFusionTest extends TestCase {
 	}
 
 	public function testWeightsShiftTheBalanceBetweenSignals(): void {
-		// Nothing weights the signals in V1, but the mechanism has to work
-		// before the tuning it enables is worth attempting.
+		// The mechanism the retrieval service now relies on: RetrievalService
+		// weights the keyword arm at 0.2 against the vector arm's 1.0.
 		$even     = ReciprocalRankFusion::fuse( array( array( 1, 2 ), array( 2, 1 ) ) );
 		$vectorly = ReciprocalRankFusion::fuse( array( array( 1, 2 ), array( 2, 1 ) ), array( 3.0, 1.0 ) );
 
@@ -129,5 +129,47 @@ final class ReciprocalRankFusionTest extends TestCase {
 		$this->assertSame( 1.0, RetrievalOptions::of( threshold: 9.9 )->threshold );
 		$this->assertSame( 0.0, RetrievalOptions::of( threshold: -1.0 )->threshold );
 		$this->assertSame( RetrievalOptions::DEFAULT_THRESHOLD, RetrievalOptions::of()->threshold );
+	}
+
+	/**
+	 * The failure that cost 0.055 recall, reduced to its smallest form.
+	 *
+	 * Unweighted, a chunk that tops the keyword list ties with one that tops
+	 * the vector list however poor its semantic match is, and ordering alone
+	 * cannot tell them apart. On real content that meant long documents full
+	 * of common words displacing the actual answer.
+	 */
+	public function testAnUnweightedKeywordWinnerTiesWithTheVectorWinner(): void {
+		$fused = ReciprocalRankFusion::fuse( array( array( 10 ), array( 99 ) ) );
+
+		$this->assertSame( array( 10, 99 ), array_keys( $fused ) );
+		// Equal scores: the keyword-only chunk is indistinguishable from the
+		// best semantic match, and only insertion order separates them.
+		$this->assertEqualsWithDelta( $fused[10], $fused[99], 1e-12 );
+	}
+
+	public function testWeightingStopsKeywordDisplacingAStrongerVectorMatch(): void {
+		// The vector arm's second-place chunk must still outrank a chunk that
+		// exists only because a keyword coincided.
+		$fused = ReciprocalRankFusion::fuse(
+			array( array( 10, 11 ), array( 99 ) ),
+			array( 1.0, 0.2 )
+		);
+
+		$this->assertSame( array( 10, 11, 99 ), array_keys( $fused ) );
+		$this->assertGreaterThan( $fused[99], $fused[11] );
+	}
+
+	public function testAWeightedKeywordArmStillContributes(): void {
+		// Weighting must not be a disguised switch-off: a chunk only the
+		// keyword arm found — a part number, an SKU, an error code — has to
+		// keep reaching the results, which is the whole point of fusing.
+		$fused = ReciprocalRankFusion::fuse(
+			array( array( 10 ), array( 99 ) ),
+			array( 1.0, 0.2 )
+		);
+
+		$this->assertArrayHasKey( 99, $fused );
+		$this->assertGreaterThan( 0.0, $fused[99] );
 	}
 }

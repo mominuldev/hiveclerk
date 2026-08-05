@@ -22,7 +22,7 @@ is not the one anybody wanted.
 | Retrieval latency p95 at 10k chunks | ≤ 300 ms | **34.6 ms** | ✅ |
 | Peak memory | ≤ 96 MB | **89.4 MB** | ✅ |
 | Quantisation recall@5 (synthetic) | ≥ 0.90 | **1.000** | ✅ |
-| **End-to-end recall@5 (real questions)** | **≥ 0.90** | **0.815** | ❌ |
+| **End-to-end recall@5 (real questions)** | **≥ 0.90** | **0.889** (was 0.815) | ❌ |
 
 The two budgets that were always going to be about our own code pass with
 room to spare — the latency figure has eight times the headroom the budget
@@ -52,12 +52,43 @@ technical documents are full of common words and BM25 rewards them, so the
 chunks that win on keyword are systematically the ones that deserve it
 least.
 
-**This has not been fixed, deliberately.** The obvious repairs — weighting
-the vector arm, or refusing keyword candidates below a vector floor — would
-be tuned against a 54-question set written in the same sitting, and a
-retrieval change validated only on the data it was tuned to is a number
-that looks better without the product being better. It wants a question set
-somebody else wrote.
+#### Fixed: the keyword arm is weighted at 0.2
+
+RRF already accepted per-list weights and nothing passed any, so both arms
+counted equally. They now do not.
+
+Chosen by sweeping a two-thirds sample and confirming against the held-out
+third, rather than fitting all 54 — a retrieval constant tuned on the data
+it is then reported against is a number that improves without the product
+improving. The split is every third question rather than a contiguous
+slice, because the set is grouped by page and a contiguous split would
+measure generalisation across subject matter instead of across questions.
+
+| | recall@5 | MRR |
+|---|---|---|
+| Held-out third, unweighted | 0.833 | 0.727 |
+| **Held-out third, weighted 0.2** | **0.889** | **0.819** |
+| Full set, unweighted | 0.815 | 0.698 |
+| **Full set, weighted 0.2** | **0.889** | **0.765** |
+| Full set, vector only | 0.870 | 0.615 |
+
+The weighted configuration beats unweighted fusion *and* vector alone on
+both measures, which is what hybrid search is supposed to do and previously
+did not. Keyword can still surface a part number, an SKU or an error code
+that the embedding had nothing to grip on; it can no longer outvote a
+strong semantic match.
+
+**It still does not reach the floor.** 48 of 54 is 0.889 against 0.90 —
+short by one question. The gate is failing by less, for a reason that is
+now understood, and calling that a pass would be the easiest lie in this
+document.
+
+The six that remain are all of one kind: a specific fact inside a page
+about something broader. "How long does a voucher stay valid?" wants two
+sentences buried in a page mostly about card payments. That is a chunking
+problem rather than a ranking one — the whole page is a single embedding,
+so the question competes with everything else on it — and fixing it means
+splitting on sub-headings, which changes indexing rather than retrieval.
 
 #### Added
 
