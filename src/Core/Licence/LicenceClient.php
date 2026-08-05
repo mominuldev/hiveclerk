@@ -139,6 +139,15 @@ final class LicenceClient {
 			return LicenceResponse::unreachable( 'The licence server is having trouble.' );
 		}
 
+		// Authenticity before interpretation. An answer we cannot attribute
+		// to our own server is discarded whole rather than read for the parts
+		// that look sensible — otherwise anyone able to interfere with the
+		// customer's traffic decides their tier. Unreachable, not invalid:
+		// see LicenceSignature for why that direction matters.
+		if ( ! LicenceSignature::verify( $body, time() ) ) {
+			return LicenceResponse::unreachable( 'The licence server\'s answer could not be verified.' );
+		}
+
 		return LicenceResponse::fromBody( $body, $code );
 	}
 

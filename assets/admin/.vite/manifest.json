@@ -1,23 +1,23 @@
 {
-  "_charts-d2bLABkh.js": {
-    "file": "assets/charts-d2bLABkh.js",
+  "_charts-BuqrGyiD.js": {
+    "file": "assets/charts-BuqrGyiD.js",
     "name": "charts",
     "imports": [
-      "_react-BIi7E_TS.js"
+      "_react-cwCcgo7z.js"
     ]
   },
-  "_react-BIi7E_TS.js": {
-    "file": "assets/react-BIi7E_TS.js",
+  "_react-cwCcgo7z.js": {
+    "file": "assets/react-cwCcgo7z.js",
     "name": "react"
   },
   "admin-app/src/main.tsx": {
-    "file": "assets/main-fnuGhhEg.js",
+    "file": "assets/main-YvxI-tWj.js",
     "name": "main",
     "src": "admin-app/src/main.tsx",
     "isEntry": true,
     "imports": [
-      "_react-BIi7E_TS.js",
-      "_charts-d2bLABkh.js"
+      "_react-cwCcgo7z.js",
+      "_charts-BuqrGyiD.js"
     ],
     "css": [
       "assets/main-DqTuG8ii.css"

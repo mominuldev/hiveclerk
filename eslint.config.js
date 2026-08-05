@@ -3,7 +3,15 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
-  { ignores: ['assets/**', 'node_modules/**', 'vendor/**'] },
+  /*
+   * `landing-page/` is the marketing site, not the plugin. It ships
+   * separately, has its own globals and its own toolchain, and linting it
+   * with the plugin's config produced 34 errors that were noise rather
+   * than defects — enough to make `npm run check` a gate nobody could
+   * read. Excluded so a real regression in `admin-app/` or
+   * `public-widget/` is visible on the first line of output.
+   */
+  { ignores: ['assets/**', 'node_modules/**', 'vendor/**', 'landing-page/**'] },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,

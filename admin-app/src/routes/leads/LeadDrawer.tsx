@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { ScoreBreakdown } from './ScoreBreakdown';
 import { LeadTimeline } from './LeadTimeline';
 import { Button } from '@/components/ui/Button';

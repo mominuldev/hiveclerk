@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Columns3, SlidersHorizontal, Table2 } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';

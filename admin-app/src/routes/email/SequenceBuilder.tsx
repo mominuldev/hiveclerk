@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 import { ArrowLeft, Pause, Play, Plus } from 'lucide-react';
 import { StepEditor } from './StepEditor';
 import { Badge } from '@/components/ui/Badge';

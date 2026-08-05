@@ -208,6 +208,15 @@ final class LeadNotifier {
 			array(
 				'timeout'     => self::SLACK_TIMEOUT,
 				'sslverify'   => true,
+				// Redirects are not followed. The guard above checks the URL
+				// the operator typed and cannot check where that URL sends
+				// us next, and WordPress's own per-hop check permits
+				// link-local — so a "Slack webhook" pointing at a public host
+				// that 302s to 169.254.169.254 would have this server post to
+				// the cloud metadata endpoint on every qualified lead. Slack
+				// does not redirect its webhook endpoint; nothing legitimate
+				// is lost.
+				'redirection' => 0,
 				'headers'     => array( 'Content-Type' => 'application/json' ),
 				'body'        => (string) wp_json_encode( array( 'text' => $text ) ),
 				'data_format' => 'body',

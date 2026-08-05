@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { formatCompact } from '@/lib/format';
 import { cn } from '@/lib/cn';

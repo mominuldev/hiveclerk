@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Unplug } from 'lucide-react';
 import { ConnectModal } from './ConnectModal';
 import { ConnectorCard } from './ConnectorCard';

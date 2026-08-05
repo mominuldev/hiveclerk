@@ -6,6 +6,236 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Sprint 10 (continued) — security review, the licence server, SSRF
+
+**Goal:** close the three Sprint 10 line items that could be closed without
+hardware, accounts or design partners: the security review execution (D15),
+the licence server Sprint 9 left as its largest gap, and a lint gate that
+had stopped gating.
+
+#### Security
+
+- **A crawl source could reach the cloud metadata endpoint through a
+  redirect (SEC-06, High).** `OutboundUrlGuard` was written precisely
+  because `wp_safe_remote_get()` does not block link-local, and
+  `169.254.169.254` serves instance credentials — but it was a *pre-flight*
+  check. WordPress followed redirects itself, re-validating each hop with
+  `wp_http_validate_url()`, and the guard was never asked again. So the
+  address the guard exists for was unreachable directly and reachable one
+  hop away:
+
+      crawl source → https://attacker.example/   (public; guard says fine)
+                   → 302 http://169.254.169.254/latest/meta-data/…
+                   → fetched, chunked, embedded, and answerable by the widget
+
+  Measured rather than argued: `wp_http_validate_url()` returns the URL
+  unchanged for the metadata address on this install while
+  `OutboundUrlGuard` blocks it, and that difference *is* the vulnerability.
+  Loopback, RFC 1918, IPv6 unique-local and `0.0.0.0/8` were all refused by
+  both, so link-local was the only gap — which is why nothing looked wrong.
+  `SafeRedirectFollower` now walks the chain a hop at a time with the guard
+  on each one, and refuses any redirect that is not plain HTTP or HTTPS.
+  D15 §11 SEC-06 required "re-validate after every redirect" and this is the
+  control it asked for.
+- **The Slack notification webhook had the same shape and the same hole.**
+  Guarded on the URL an operator typed, then `wp_safe_remote_post()` with
+  WordPress's default five redirects. A "Slack webhook" pointing at a public
+  host that redirects would have posted to whatever it redirected to, on
+  every qualified lead, on a schedule the attacker chooses. Redirection is
+  now off: Slack does not redirect its webhook endpoint, so nothing
+  legitimate is lost.
+- **The licence server signed its answers with a secret every customer
+  would have held.** `Hmac` uses one symmetric key, which is sound for a
+  server-to-server caller and worthless for a check that runs on the
+  customer's own machine — shipping the secret in the plugin puts forgery
+  in the hands of everyone who can read `wp-config.php`. Replaced for the
+  Hiveclerk dialect by Ed25519 (`Signer` / `LicenceSignature`): the server
+  holds the half that signs, the plugin ships the half that verifies.
+  Appointiva Pro's dialect is untouched.
+- **Hiveclerk never checked the signature at all.** The server had signed
+  every response since 1.0.0 and no client had ever verified one, so the
+  control existed on paper only. `LicenceClient` now verifies before
+  interpreting, and a response that fails is discarded whole rather than
+  read for the parts that look plausible.
+- **An Appointiva licence kept validating after it was revoked.**
+  Revocation and expiry were checked on `activate` and nowhere else, so a
+  refunded, charged-back or lapsed key went on passing `validate` for as
+  long as its activation row existed — which is for ever, because nothing
+  removes one. Revoking a key had no effect on any site already running it.
+- **The rate limiter's window never expired for the callers it was
+  limiting.** Every counted attempt was written back with a fresh TTL, so a
+  client polling steadily had its lockout renewed by the same attempts that
+  were being rejected — a five-minute limit that became permanent. Nothing
+  errors in that state; the only symptom is a customer reporting that the
+  licence server has blocked them for good. The window is now anchored to
+  its start and attempts past the allowance are not counted.
+- **Behind any reverse proxy the rate limiter had one bucket for the whole
+  internet.** `REMOTE_ADDR` is the load balancer on a licence server that
+  sits behind Cloudflare, so the first busy minute locks out every customer
+  at once. Forwarded headers are now read — but only when
+  `APPOINTIVA_LICENSE_TRUSTED_PROXY` says a proxy we control is the sole
+  route in, because a server that trusts `X-Forwarded-For` unconditionally
+  has no rate limiting at all and key guessing becomes unbounded.
+- **`/update-check` took a licence key with no allowance**, which made it
+  the cheapest place on the server to guess keys from.
+- **Seats could be over-allocated.** Counting activations and then
+  inserting one is a read-then-write; two installs activating the same
+  Agency key in the same second both saw room at 24 and both inserted.
+  `claim_seat()` serialises the check and the insert behind a named lock.
+  Seat count is the thing customers pay for.
+- **`UnsubscribeController` hashed the caller's address unsalted.** The
+  IPv4 space is four billion entries — small enough to enumerate — so an
+  unsalted SHA-256 of an address is a reversible identifier wearing a
+  hash's clothes. `AuditLogger` and `IpHasher` both say so in their own
+  docblocks; this was the copy that did not.
+- **`npm audit` reported two High advisories** (react-router RSC-mode CSRF
+  bypass) and therefore the D15 SEC-13 gate could not be switched on.
+
+#### Added
+
+- **`Infrastructure\Http\SafeRedirectFollower`** — per-hop redirect
+  following with the SSRF guard on each URL, method downgrade on anything
+  that is not a 307/308, and a hop ceiling matching WordPress's own.
+- **`Core\Licence\LicenceSignature`** — Ed25519 verification of licence
+  answers, with replay bounded by a `signed_at` that is inside the signed
+  material rather than beside it.
+- **A working licence server.** Sprint 9 recorded "no licence server
+  exists" as its largest gap, with `LicenceClient` written against a
+  specification nothing had ever answered. `appointiva-license-server` now
+  serves Hiveclerk's dialect on its own REST namespace, scoped by the
+  `product_id` column that has been on the table since 1.0.0 — so
+  Appointiva Pro keeps working and a Hiveclerk key cannot activate an
+  Appointiva install.
+- **`License\Product`** on the server: the tier→seats map, mirroring
+  `Tier::siteLimit()`.
+- 17 tests: 6 on signature verification, 5 on redirect revalidation, and
+  the rest on the licence paths.
+
+#### Decisions worth recording
+
+- **A response we cannot authenticate is `unreachable`, never `invalid`.**
+  A failed signature says nothing about the licence, so it must not decide
+  anything about it. Discarding the answer whole means a forged upgrade is
+  ignored *and* a customer whose network mangles a response keeps what they
+  had. Reporting it as invalid would let anyone able to interfere with a
+  customer's traffic switch their paid features off.
+- **Signature verification is skipped when no public key is configured**,
+  rather than failing closed. This is defence in depth behind TLS, and
+  failing closed would turn one bad release of the server's key material
+  into every customer's licence going unverifiable at once. The cost is
+  that a misconfigured install silently drops back to trusting TLS alone,
+  which is why `LicenceSignature::isConfigured()` exists.
+- **Rate limiting answers `unreachable` with a 429.** A 429 whose body
+  carries no recognised status is rewritten to `invalid` by
+  `LicenceResponse::fromBody()` — so a customer sharing a NAT with a busy
+  neighbour would have been told their key was fake. The 429 is kept for
+  well-behaved HTTP clients; the body says what actually happened.
+- **A valid key with no seat on this site answers 200, not 403.** Same
+  rule, same trap: `inactive` on a 4xx becomes `invalid`, and "your seat was
+  released" would reach the operator as "your key is not recognised",
+  sending them to hunt for a typo in a perfectly good key.
+- **Seats are read from the tier, not from `max_activations`.** The plugin
+  renders "3 of 5 sites" from its own copy of the tier table and never asks
+  the server for the limit, so a seat count typed in by hand is a seat count
+  that can be typed into contradicting what the customer sees.
+- **`react-router` was upgraded to 8.3.0 rather than downgraded to
+  7.11.0.** npm's only offered fix was to go seven minors backwards. The
+  advisory range is 7.12.0–8.2.0, so moving forward clears it while keeping
+  every other fix; the advisory itself covers RSC mode, which a hash-router
+  SPA in wp-admin does not use. v8 folded `react-router-dom` into
+  `react-router`, so 24 files changed import path and nothing else.
+- **`landing-page/` is excluded from ESLint rather than fixed.** It is the
+  marketing site, not the plugin: separate toolchain, separate globals, and
+  34 errors that were noise. Leaving them in meant `npm run check` failed on
+  every run and therefore gated nothing.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| `npm run check` | **passes end to end** for the first time |
+| Unit tests | **549**, 2,099 assertions (17 new) |
+| Integration tests | 22, 70 assertions |
+| SEC-04 | **98/98 routes gated** |
+| SEC-13 | `composer audit` clean · `npm audit` **0 vulnerabilities** (was 2 High) |
+| SEC-01 | 42 payloads × 2 doors, 95 tests, 318 assertions |
+| Admin bundle | **178.43 KB** gzipped (budget 350; was 178.97) |
+| Widget bundle | 17.23 KB gzipped (budget 40) |
+
+- **The licence flow was exercised against the real server over real
+  HTTP** — not a stub, not a mock: 22 assertions across nine scenarios.
+  Activation of a Business key, an idempotent re-check, seat release,
+  unknown key, revoked key, expired key, seat limit, a seat released
+  elsewhere, and a forged "you are Agency now" response that was correctly
+  ignored while the customer kept the Pro entitlements they already had.
+- **The SSRF finding was demonstrated before it was fixed.**
+  `wp_http_validate_url()` and `OutboundUrlGuard` were run side by side over
+  seven addresses; link-local was the one they disagreed about, in the
+  direction that mattered. The regression test asserts the metadata address
+  is never requested, not merely that an error came back — an error
+  assertion alone would pass even if the fetch had happened.
+- **The React Router 8 upgrade was rendered, not just compiled.** Six
+  routes screenshotted against the live admin, including a nested one
+  (`settings/privacy`) and the one that white-screened in Sprint 9
+  (`analytics/clerks`). Sidebar, roster rail, tab bars and nested outlets
+  all intact.
+- The licence server's PHP is syntax-clean and both dialects register:
+  4 Appointiva routes, 3 Hiveclerk routes.
+
+#### Not delivered
+
+- **Rate limits under load (D15 §14).** The licence server's limiter was
+  fixed and unit-reasoned; no load generator has been pointed at it, and the
+  transient-based counter is still not atomic under concurrency. Two
+  simultaneous requests can each read the same count.
+- **The accessibility audit, the E2E suite, the host-compatibility matrix
+  and the beta**, all unchanged from the previous entry and all blocked on
+  something other than engineering time.
+- **The performance pass against every NFR budget.** Only the two bundle
+  budgets were measured again.
+- **"No endpoint returns a decrypted secret — verified by automated
+  test."** `KeyStorageTest` proves it at the service boundary —
+  `describe()` has no `key` and the stored bytes do not contain it — but
+  nothing walks every registered route's response looking for one. The
+  claim is verified where secrets are produced, not where they would
+  escape.
+- **A third-party penetration test**, still recommended and still not
+  budgeted.
+
+#### Known gaps
+
+- **The SSRF fix is still a pre-flight check and DNS rebinding still beats
+  it.** A name that resolves publicly when the guard asks and privately when
+  the socket opens defeats both the guard and the follower. Closing it needs
+  resolution and connection in one step, which the WordPress HTTP API does
+  not expose. The window is now one hop wide instead of five, which is
+  smaller, not zero.
+- **No licence has ever been issued through the admin screen in
+  production.** The form was exercised by creating rows through the
+  repository; the screen itself has been rendered but not driven end to end
+  by a person.
+- **The Ed25519 public key is not yet baked into a release.** Verification
+  is live and tested, but until `HIVECLERK_LICENCE_PUBLIC_KEY` ships with a
+  build, every install skips the check and falls back to trusting TLS —
+  which is the documented degradation, and also means the control is not
+  actually protecting anybody yet.
+- **Key rotation has no story.** Removing the server's keypair invalidates
+  every public key already shipped, and there is no second-key window to
+  roll through.
+- **Licence keys are stored in plaintext on the server.** Deliberate — a
+  hashed key cannot be read back to a customer who lost theirs — but it
+  means a database dump of the licence server is a list of working keys.
+- **The seat lock is a MySQL named lock**, and a failure to acquire one
+  within five seconds proceeds anyway rather than refusing a paying
+  customer's activation. That is the right trade and it does reopen the
+  race in exactly the case where the database is already unhealthy.
+- **`react-router` 8.3.0 was verified by screenshot and typecheck**, not by
+  an interaction test. There is still no automated front-end test suite, so
+  a routing regression that only appears on navigation would not be caught.
+
 ### Sprint 10 — Harden, secure, beta (partial)
 
 **Goal:** M4. No new features. This entry covers the part of Sprint 10

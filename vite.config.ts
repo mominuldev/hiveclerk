@@ -36,7 +36,7 @@ export default defineConfig({
         // keeps the app chunk small enough to re-download cheaply when we
         // ship a fix.
         manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom'],
+          react: ['react', 'react-dom', 'react-router'],
           charts: ['recharts'],
         },
       },

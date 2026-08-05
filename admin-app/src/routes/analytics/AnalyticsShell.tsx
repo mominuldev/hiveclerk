@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Download } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';

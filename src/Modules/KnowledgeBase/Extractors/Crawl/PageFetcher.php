@@ -10,12 +10,13 @@ declare( strict_types=1 );
 namespace Hiveclerk\Modules\KnowledgeBase\Extractors\Crawl;
 
 use Hiveclerk\Infrastructure\Http\OutboundUrlGuard;
+use Hiveclerk\Infrastructure\Http\SafeRedirectFollower;
 use WP_Error;
 
 /**
  * Retrieves one URL, safely.
  *
- * ## Why wp_safe_remote_get and not wp_remote_get
+ * ## Why the guard, and why on every hop
  *
  * A crawl source takes a URL from an admin form and asks the *server* to
  * fetch it. That is a server-side request forgery primitive: point it at
@@ -25,10 +26,18 @@ use WP_Error;
  *
  * `wp_safe_remote_get()` runs the URL through `wp_http_validate_url()`,
  * which rejects loopback and private address ranges and non-standard
- * ports. It is a meaningful control rather than a complete one — DNS
- * rebinding defeats a check made before the socket opens — but it is the
- * one WordPress provides, it is what core uses for the same class of
- * request, and the alternative is writing a worse one.
+ * ports — but not link-local, which is exactly where the metadata endpoint
+ * lives. {@see OutboundUrlGuard} covers that gap, and used to cover it only
+ * for the first URL: WordPress followed redirects itself, checking each hop
+ * with its own weaker rules, so a public URL that redirected to the metadata
+ * address was fetched and indexed. Every request now goes through
+ * {@see SafeRedirectFollower}, which walks the chain a hop at a time and
+ * asks the guard about each one.
+ *
+ * Both remain pre-flight checks and are therefore beatable by DNS rebinding
+ * — a name that resolves publicly here and privately when the socket opens.
+ * Closing that needs resolution and connection in one step, which the
+ * WordPress HTTP API does not expose.
  *
  * The visible cost is that a site cannot crawl `localhost` or a private
  * staging host. That is the control working.
@@ -46,11 +55,6 @@ final class PageFetcher {
 	private const TIMEOUT = 15;
 
 	/**
-	 * Redirects followed before giving up.
-	 */
-	private const REDIRECTS = 3;
-
-	/**
 	 * Content types worth parsing.
 	 */
 	private const HTML_TYPES = array( 'text/html', 'application/xhtml+xml' );
@@ -58,10 +62,12 @@ final class PageFetcher {
 	/**
 	 * Construct.
 	 *
-	 * @param OutboundUrlGuard $guard Private-network check.
+	 * @param OutboundUrlGuard     $guard    Private-network check.
+	 * @param SafeRedirectFollower $follower Per-hop redirect follower.
 	 */
 	public function __construct(
-		private readonly OutboundUrlGuard $guard = new OutboundUrlGuard()
+		private readonly OutboundUrlGuard $guard = new OutboundUrlGuard(),
+		private readonly SafeRedirectFollower $follower = new SafeRedirectFollower()
 	) {
 	}
 
@@ -77,11 +83,10 @@ final class PageFetcher {
 			return FetchResult::failed( $url, 'That address is not reachable from a crawl.' );
 		}
 
-		$response = wp_safe_remote_get(
+		$response = $this->follower->request(
 			$url,
 			array(
 				'timeout'             => self::TIMEOUT,
-				'redirection'         => self::REDIRECTS,
 				'user-agent'          => $userAgent,
 				'limit_response_size' => self::MAX_BYTES,
 				'headers'             => array( 'Accept' => 'text/html,application/xhtml+xml' ),
@@ -133,11 +138,10 @@ final class PageFetcher {
 			return null;
 		}
 
-		$response = wp_safe_remote_get(
+		$response = $this->follower->request(
 			$url,
 			array(
 				'timeout'             => self::TIMEOUT,
-				'redirection'         => self::REDIRECTS,
 				'user-agent'          => $userAgent,
 				'limit_response_size' => self::MAX_BYTES,
 			)

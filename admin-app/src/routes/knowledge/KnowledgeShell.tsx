@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { FlaskConical, Library, MessageCircleQuestion, Sparkles } from 'lucide-react';
 import { useGaps } from '@/api/queries/useGaps';

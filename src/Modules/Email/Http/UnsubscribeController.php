@@ -229,6 +229,14 @@ final class UnsubscribeController extends AbstractController {
 	 * unauthenticated stranger reaches and their address is not something
 	 * worth keeping in a rate-limit table in the clear.
 	 *
+	 * Salted, for the reason `AuditLogger` and `IpHasher` both give and
+	 * this did not: the whole IPv4 space is four billion entries, which is
+	 * small enough to enumerate, so an unsalted SHA-256 of an address is a
+	 * reversible identifier wearing a hash's clothes. Neither of those two
+	 * can be reused here — `IpHasher` returns null when the site has turned
+	 * storage off, and a rate limiter with no key is a rate limiter that
+	 * puts every stranger in the same bucket.
+	 *
 	 * @return string
 	 */
 	private function clientKey(): string {
@@ -236,7 +244,9 @@ final class UnsubscribeController extends AbstractController {
 			? sanitize_text_field( wp_unslash( (string) $_SERVER['REMOTE_ADDR'] ) )
 			: 'unknown';
 
-		return substr( hash( 'sha256', $ip ), 0, 32 );
+		$salt = defined( 'AUTH_SALT' ) ? (string) AUTH_SALT : '';
+
+		return substr( hash_hmac( 'sha256', $ip, $salt ), 0, 32 );
 	}
 
 	/**
