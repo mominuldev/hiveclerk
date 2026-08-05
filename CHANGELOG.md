@@ -6,7 +6,7 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
-### R-2 host matrix — the first real host, and Hiveclerk does not run on it
+### R-2 host matrix — Hostinger, and a split-brain PHP that kills every job
 
 **Goal:** start the five-host compatibility matrix that has been "still one
 host" since Sprint 3 and blocking M2 since Sprint 5. Hostinger shared
@@ -76,16 +76,56 @@ The last two are the ones the SSE transport lives or dies by and they are
 encouraging, but they are the **CLI** values. What matters for streaming is
 the web SAPI's, and that has not been read yet.
 
+#### Then PHP 8.3 was selected, and a worse problem appeared
+
+With 8.3 set for the site and sodium enabled, the plugin activates: 29
+tables created, `hiveclerk/v1` live in the REST index, admin healthy.
+
+**But Hostinger sets the web PHP and the CLI PHP separately, and only the
+web one moved.** SSH and WP-CLI still run 8.2.30, so under CLI the plugin
+does not boot at all. Measured directly rather than inferred:
+
+    PHP running this: 8.2.30
+      hiveclerk/jobs/sequence_tick        NO CALLBACK - would fire into nothing
+      hiveclerk/jobs/analytics_rollup     NO CALLBACK - would fire into nothing
+      hiveclerk/job/purge_conversations   NO CALLBACK - would fire into nothing
+      plugin class loaded: NO
+
+This site survives only by accident. It has no system crontab and does not
+set `DISABLE_WP_CRON`, so WordPress runs cron on page load — under the web
+PHP, where the plugin exists. The moment anybody follows the standard
+performance advice every host publishes — set `DISABLE_WP_CRON`, add a
+system cron calling `php wp-cron.php` — that cron runs under CLI PHP 8.2,
+the plugin is not there, and **every background job in the product silently
+stops**: ingestion, embedding, sequence sends, the analytics rollup and the
+retention purge.
+
+Nothing would report it. The events stay in the `cron` option and WP-CLI
+lists them with a healthy-looking next run, because rescheduling happens
+whether or not a callback existed. The admin UI keeps working, because it is
+on 8.3. The system status screen (FR-SYS-07) shows every job with its next
+run and would call all three fine — **it reads the schedule, which is
+exactly the thing that stays healthy in this failure.** A retention policy
+that quietly does nothing is a GDPR commitment that quietly is not kept.
+
+The screen needs to compare a *last actually ran* timestamp against the
+schedule, not report the schedule. A job whose next run keeps advancing
+while its last run is days old is the precise signature of this, and of
+several other cron failures the product currently cannot distinguish from
+health. Not built yet.
+
 #### Not delivered
 
-- **Everything downstream of activation.** SSE streaming, the polling
-  fallback, first-token timing, the widget on a real page: all of it needs
-  the plugin running, which needs PHP 8.3 selected for the domain. That is
-  an hPanel change on an account carrying 25 live sites, and it is not a
-  change to make on somebody's production hosting without them present.
+- **Everything downstream of a working CLI.** SSE streaming, the polling
+  fallback, first-token timing and the widget on a real page still need
+  measuring. The plugin now runs on the web here, so these are unblocked in
+  principle; they were not reached in this session.
+- **The `last ran` job health signal** described above.
+- **Guidance for the sodium case.** Enabling the extension is the fix and
+  nothing in the product says so.
 - **Four of the five hosts.** SiteGround, Bluehost, GoDaddy and WP Engine
-  are untouched. M2's "4 of 5" criterion remains unmet, and one host — the
-  one the product currently fails to install on — is not a matrix.
+  are untouched. M2's "4 of 5" criterion remains unmet, and one host is not
+  a matrix.
 
 ### M1 measured at last — and its recall criterion fails
 
