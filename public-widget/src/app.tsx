@@ -8,6 +8,7 @@ import { Api } from './lib/api';
 import { send as deliver } from './lib/transport';
 import { strings } from './lib/i18n';
 import { Bubble } from './components/Bubble';
+import { Capture } from './components/Capture';
 import { Composer } from './components/Composer';
 import { IconChat, IconClose, IconMinimise } from './components/Icons';
 import type { ChatMessage, Transport, WidgetBoot } from './types';
@@ -27,6 +28,8 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [awaitingHuman, setAwaitingHuman] = useState(false);
   const [humanActive, setHumanActive] = useState(false);
+  const [captured, setCaptured] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   const log = useRef<HTMLDivElement | null>(null);
   const launcher = useRef<HTMLButtonElement | null>(null);
@@ -45,6 +48,16 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
 
     return [{ id: 'greeting', role: 'clerk', text: greeting, citations: [], rating: null }];
   }, [greeting, messages]);
+
+  /*
+   * One page view, reported once, whether or not the panel is ever
+   * opened. This is what makes "visited pricing twice" a thing a scoring
+   * rule can count, and it is the only request the widget makes on a page
+   * nobody chats on.
+   */
+  useEffect(() => {
+    void api.pageView();
+  }, [api]);
 
   /* Restore a transcript when the panel is opened on a later page view. */
   useEffect(() => {
@@ -148,6 +161,23 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
       panel.current?.querySelector('textarea')?.focus();
     }
   }, [open]);
+
+  /*
+   * The card appears once the visitor has said as much as the operator
+   * configured, and never while a colleague is answering — somebody who
+   * has just asked for a person does not need a form asking for their
+   * address. Dismissing it ends it for this page view: "Not now" that
+   * comes back two messages later is not a dismissal.
+   */
+  const visitorTurns = messages.filter((message) => message.role === 'visitor').length;
+
+  const showCapture =
+    boot.capture?.enabled === true &&
+    !captured &&
+    !dismissed &&
+    !awaitingHuman &&
+    !busy &&
+    visitorTurns >= (boot.capture.ask_after ?? 2);
 
   const rate = useCallback(
     (id: string, rating: -1 | 1) => {
@@ -292,6 +322,25 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
 
         {awaitingHuman ? (
           <div class="notice">{humanActive ? labels.humanHere : labels.waitingHuman}</div>
+        ) : null}
+
+        {captured ? <div class="notice">{labels.captureThanks}</div> : null}
+
+        {showCapture ? (
+          <Capture
+            labels={labels}
+            consent={boot.capture?.consent ?? null}
+            onSubmit={async (email, consent) => {
+              const accepted = await api.capture({ email, consent });
+
+              if (accepted) {
+                setCaptured(true);
+              }
+
+              return accepted;
+            }}
+            onDismiss={() => setDismissed(true)}
+          />
         ) : null}
 
         {error ? <div class="error">{error}</div> : null}

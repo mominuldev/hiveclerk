@@ -62,7 +62,31 @@ abstract class AbstractController {
 	}
 
 	/**
+	 * Throttle results already produced this request, keyed by bucket.
+	 *
+	 * @var array<string, WP_Error|array<string, string>>
+	 */
+	private array $throttled = array();
+
+	/**
 	 * Apply a rate limit, returning an error response when exceeded.
+	 *
+	 * ## Why the result is memoised
+	 *
+	 * WordPress calls a `permission_callback` **twice** per request: once
+	 * to authorise the call, and again afterwards from
+	 * `rest_send_allow_header()`, which re-runs every handler's callback
+	 * to decide which methods to advertise in the `Allow` header.
+	 *
+	 * A permission callback with a side effect therefore has that side
+	 * effect twice, and this one consumes a unit of the customer's rate
+	 * limit. Left alone, every public ceiling in the product is half what
+	 * it says: a widget configured for twelve messages a minute starts
+	 * refusing at six, and the visitor is told they are going too fast
+	 * when they are not.
+	 *
+	 * A controller instance serves one route of one request, so caching
+	 * here is exactly per-request.
 	 *
 	 * @param RateLimiter $limiter Limiter.
 	 * @param string      $bucket  Bucket key.
@@ -76,6 +100,10 @@ abstract class AbstractController {
 		int $limit,
 		int $window = 60
 	): WP_Error|array {
+		if ( isset( $this->throttled[ $bucket ] ) ) {
+			return $this->throttled[ $bucket ];
+		}
+
 		$result = $limiter->hit( $bucket, $limit, $window );
 
 		if ( ! $result->allowed ) {
@@ -92,10 +120,14 @@ abstract class AbstractController {
 				)
 			);
 
+			$this->throttled[ $bucket ] = $error;
+
 			return $error;
 		}
 
-		return $result->headers();
+		$this->throttled[ $bucket ] = $result->headers();
+
+		return $this->throttled[ $bucket ];
 	}
 
 	/**

@@ -30,6 +30,12 @@ export interface Strings {
   waitingHuman: string;
   humanHere: string;
   fromHuman: string;
+  captureTitle: string;
+  captureEmail: string;
+  captureSend: string;
+  captureDismiss: string;
+  captureThanks: string;
+  captureInvalid: string;
 }
 
 const EN: Strings = {
@@ -52,6 +58,15 @@ const EN: Strings = {
   waitingHuman: 'Waiting for a colleague. You can keep typing — they will see it.',
   humanHere: 'A colleague is answering. You can keep typing.',
   fromHuman: 'From a colleague',
+  captureTitle: 'Want us to follow this up? Where should we send it?',
+  captureEmail: 'you@company.com',
+  captureSend: 'Send it',
+  // Always present, and never a secondary-looking control. A capture
+  // prompt that cannot be dismissed is a dark pattern, and it produces
+  // junk addresses from people trying to get past it.
+  captureDismiss: 'Not now',
+  captureThanks: "Thanks — we'll be in touch.",
+  captureInvalid: "That doesn't look like an email address.",
 };
 
 /**

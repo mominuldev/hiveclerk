@@ -30,6 +30,15 @@ export interface WidgetBoot {
   agent: WidgetAgent;
   capabilities: { streaming: boolean; handoff: boolean; feedback: boolean };
   consent: { required: boolean; text: string | null };
+  /**
+   * Lead capture, when the operator has turned it on.
+   *
+   * Optional because a widget built against this release has to keep
+   * working against a server that predates it — and because a payload
+   * cached for five minutes may have been built before the setting
+   * changed.
+   */
+  capture?: { enabled: boolean; ask_after: number; consent: string | null };
   rest_url: string;
   version: string;
 }

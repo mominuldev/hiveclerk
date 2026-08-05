@@ -15,6 +15,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Hiveclerk\Domain\Agent\Agent;
 use Hiveclerk\Domain\Agent\AgentStatus;
+use Hiveclerk\Domain\Lead\NullVisitorResolver;
 use Hiveclerk\Domain\Shared\Uuid;
 use Hiveclerk\Modules\Chat\Services\SessionService;
 use Hiveclerk\Tests\Support\Chat\FrozenClock;
@@ -72,7 +73,12 @@ final class SessionServiceTest extends TestCase {
 
 		$this->clock    = new FrozenClock( new DateTimeImmutable( '2026-08-05 12:00:00', new DateTimeZone( 'UTC' ) ) );
 		$this->sessions = new InMemorySessions();
-		$this->service  = new SessionService( $this->sessions, new InMemoryConversations(), $this->clock );
+		$this->service  = new SessionService(
+			$this->sessions,
+			new InMemoryConversations(),
+			$this->clock,
+			new NullVisitorResolver()
+		);
 	}
 
 	protected function tearDown(): void {

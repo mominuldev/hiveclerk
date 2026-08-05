@@ -11,6 +11,7 @@ namespace Hiveclerk\Modules\Chat\Jobs;
 
 use Hiveclerk\Core\Queue\AbstractJob;
 use Hiveclerk\Core\Queue\QueueInterface;
+use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Modules\Chat\Services\RetentionService;
 
 /**
@@ -48,10 +49,12 @@ final class PurgeConversationsJob extends AbstractJob {
 	 *
 	 * @param RetentionService $retention Retention policy.
 	 * @param QueueInterface   $queue     Background queue.
+	 * @param RateLimiter      $limiter   Rate limiter, for its stored counters.
 	 */
 	public function __construct(
 		private readonly RetentionService $retention,
-		private readonly QueueInterface $queue
+		private readonly QueueInterface $queue,
+		private readonly RateLimiter $limiter
 	) {
 	}
 
@@ -74,6 +77,11 @@ final class PurgeConversationsJob extends AbstractJob {
 		$pass = self::intArg( $args, 'pass', 1 );
 
 		$this->retention->purgeSessions();
+
+		// Rate-limit counters, on the sites that keep them in the database.
+		// One row per bucket per minute is the largest table in the schema
+		// within a month, holding nothing anybody reads.
+		$this->limiter->purge();
 
 		$deleted = $this->retention->purgeBatch();
 

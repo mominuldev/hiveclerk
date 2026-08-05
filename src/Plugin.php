@@ -99,6 +99,11 @@ final class Plugin {
 		// Chat after Knowledge: it resolves RetrievalService and
 		// TokenEstimator out of the container, and both are bound there.
 		$registry->add( new Modules\Chat\ChatModule() );
+		// Leads after Chat: its public routes extend Chat's PublicController
+		// and are constructed with Chat's SessionService. The dependency the
+		// other way is one domain interface, which Leads rebinds here over
+		// the null object the core provider left in place.
+		$registry->add( new Modules\Leads\LeadsModule() );
 		// Agents last: the test console runs a clerk through Chat's prompt
 		// builder and guardrails, so both have to be bound before it asks
 		// the container for them.

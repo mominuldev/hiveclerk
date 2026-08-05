@@ -14,6 +14,7 @@ use Hiveclerk\Ai\CompletionRequest;
 use Hiveclerk\Domain\Agent\Agent;
 use Hiveclerk\Domain\Conversation\Message;
 use Hiveclerk\Domain\Knowledge\RetrievedChunk;
+use Hiveclerk\Domain\Lead\LeadCapture;
 use Hiveclerk\Modules\Chat\Support\BuiltPrompt;
 use Hiveclerk\Modules\KnowledgeBase\Text\TokenEstimator;
 
@@ -202,6 +203,10 @@ final class PromptBuilder {
 				'- Decline to discuss: %s. Redirect to what you can help with.',
 				implode( ', ', $banned )
 			);
+		}
+
+		foreach ( $this->captureLines( $agent, $context ) as $line ) {
+			$lines[] = $line;
 		}
 
 		$page = $this->pageLine( $context );
@@ -453,6 +458,65 @@ final class PromptBuilder {
 		}
 
 		return mb_substr( $trimmed, 0, $limit ) . '…';
+	}
+
+	/**
+	 * What the clerk is told to find out, and when (FR-LED-01, FR-LED-02).
+	 *
+	 * Nothing at all until the operator turns capture on. A clerk that
+	 * starts asking for email addresses because the plugin was updated has
+	 * changed the customer's site behaviour without being asked, and the
+	 * first person to notice is a visitor.
+	 *
+	 * The "one at a time" instruction is not politeness. Everything
+	 * downstream of this depends on it: the answer matcher pairs a
+	 * visitor's reply with the question in the turn before it, and a clerk
+	 * that asks three things in one message produces one answer that
+	 * belongs to none of them.
+	 *
+	 * @param Agent                $agent   The clerk.
+	 * @param array<string, mixed> $context Page context, carrying the turn count.
+	 * @return array<int, string>
+	 */
+	private function captureLines( Agent $agent, array $context ): array {
+		$capture = LeadCapture::fromArray( $agent->leadConfig );
+
+		$turns = isset( $context['visitor_messages'] ) && is_numeric( $context['visitor_messages'] )
+			? (int) $context['visitor_messages']
+			: 0;
+
+		if ( ! $capture->shouldAsk( $turns, (bool) ( $context['lead_known'] ?? false ) ) ) {
+			return array();
+		}
+
+		$lines   = array( '', 'Collecting details:' );
+		$lines[] = '- Answer the question in front of you first. Then, if it fits naturally, '
+			. 'ask for an email address so a colleague can follow up.';
+		$lines[] = '- Ask for one thing at a time, in your own words, and never repeat a question '
+			. 'the visitor has already answered in this conversation.';
+		$lines[] = '- If they decline, accept it and carry on helping. Never ask twice and never '
+			. 'make an answer a condition of helping them.';
+
+		if ( $capture->hasQuestions() ) {
+			$questions = array();
+
+			foreach ( $capture->questions as $question ) {
+				$questions[] = '  · ' . $question->describe();
+			}
+
+			$lines[] = '- Once you have an address, these are worth knowing, in this order:';
+
+			foreach ( $questions as $question ) {
+				$lines[] = $question;
+			}
+		}
+
+		if ( null !== $capture->consentText ) {
+			$lines[] = '- Before asking for marketing permission, say exactly this: "'
+				. $capture->consentText . '"';
+		}
+
+		return $lines;
 	}
 
 	/**

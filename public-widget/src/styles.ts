@@ -318,6 +318,96 @@ button {
 .handoff:hover { color: var(--hvc-text); border-color: var(--hvc-text-tertiary); }
 .handoff:focus-visible { outline: 2px solid var(--hvc-brand); outline-offset: 2px; }
 
+/* The capture card sits inside the transcript rather than over it. A
+   modal would interrupt a conversation the visitor is in the middle of,
+   which is exactly when this appears. */
+.capture {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  margin-top: 4px;
+  background: var(--hvc-surface-sunken);
+  border: 1px solid var(--hvc-border);
+  border-radius: 12px;
+}
+
+.capture-title {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--hvc-text);
+}
+
+.capture-input {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--hvc-text);
+  background: var(--hvc-surface);
+  border: 1px solid var(--hvc-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.capture-input:focus-visible {
+  outline: 2px solid var(--hvc-brand);
+  outline-offset: 1px;
+}
+
+.capture-consent {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--hvc-text-secondary);
+}
+
+.capture-error {
+  font-size: 12px;
+  color: var(--hvc-text-secondary);
+}
+
+.capture-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Both actions are real buttons at the same weight. "Not now" rendered
+   as a faint link is the pattern that makes a dismissal hard to find. */
+.capture-send,
+.capture-dismiss {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.capture-send {
+  /* The one shape in the card that carries white text on the customer's
+     own colour, exactly like the send button and the launcher. */
+  color: #FFFFFF;
+  background: var(--hvc-brand);
+}
+
+.capture-dismiss {
+  color: var(--hvc-text-secondary);
+  background: transparent;
+  border-color: var(--hvc-border);
+}
+
+.capture-send:focus-visible,
+.capture-dismiss:focus-visible {
+  outline: 2px solid var(--hvc-brand);
+  outline-offset: 2px;
+}
+
+.capture-send[disabled],
+.capture-dismiss[disabled] { opacity: 0.6; cursor: default; }
+
 .sr-only {
   position: absolute;
   width: 1px;

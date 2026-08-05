@@ -75,6 +75,37 @@ interface ConversationRepositoryInterface {
 	public function awaitingHandoff( int $limit = 20 ): array;
 
 	/**
+	 * A lead's conversations, newest first (FR-LED-06).
+	 *
+	 * @param int $leadId Lead storage id.
+	 * @param int $limit  Maximum rows.
+	 * @return array<int, Conversation>
+	 */
+	public function forLead( int $leadId, int $limit = 20 ): array;
+
+	/**
+	 * Point a conversation at a lead.
+	 *
+	 * A single-column write rather than a save(): capture runs mid-reply,
+	 * while the caller still holds a conversation whose counters it has
+	 * not finished updating.
+	 *
+	 * @param int $conversationId Conversation storage id.
+	 * @param int $leadId         Lead storage id.
+	 * @return bool
+	 */
+	public function attachLead( int $conversationId, int $leadId ): bool;
+
+	/**
+	 * Move every conversation from one lead onto another (FR-LED-08).
+	 *
+	 * @param int $from Lead being merged away.
+	 * @param int $to   Surviving lead.
+	 * @return int Rows moved.
+	 */
+	public function reassignLead( int $from, int $to ): int;
+
+	/**
 	 * Ids of conversations that started before a cutoff, oldest first.
 	 *
 	 * Ids rather than entities: the purge job needs to delete them, not to

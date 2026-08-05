@@ -235,7 +235,7 @@ export function ClerkEditor() {
             {tab === 'guardrails' && <GuardrailsTab agent={merged} onChange={set} />}
             {tab === 'appearance' && <AppearanceTab agent={merged} onChange={set} />}
             {tab === 'display' && <DisplayTab agent={merged} onChange={set} />}
-            {tab === 'leads' && <LeadsTab agent={merged} />}
+            {tab === 'leads' && <LeadsTab agent={merged} onChange={set} />}
           </div>
         </div>
 

@@ -12,6 +12,7 @@ namespace Hiveclerk\Modules\Chat\Services;
 use Hiveclerk\Domain\Agent\Agent;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Agent\PageContext;
+use Hiveclerk\Domain\Lead\LeadCapture;
 use Hiveclerk\Domain\Shared\Uuid;
 use Hiveclerk\Infrastructure\WordPress\PageContextFactory;
 
@@ -88,7 +89,8 @@ final class WidgetConfig {
 	 * @return array<string, mixed>
 	 */
 	public function payload( Agent $agent ): array {
-		$widget = $agent->widgetConfig;
+		$widget  = $agent->widgetConfig;
+		$capture = LeadCapture::fromArray( $agent->leadConfig );
 
 		$config = array(
 			'agent'        => array(
@@ -122,6 +124,16 @@ final class WidgetConfig {
 			'consent'      => array(
 				'required' => false,
 				'text'     => null,
+			),
+			// What the widget is allowed to ask for, and after how many
+			// messages (FR-LED-01). The questions themselves are not sent:
+			// the clerk asks those in conversation, and publishing a
+			// customer's qualification criteria in a public payload would
+			// put their sales process on every page of their own site.
+			'capture'      => array(
+				'enabled'   => $capture->enabled,
+				'ask_after' => $capture->askAfter,
+				'consent'   => $capture->consentText,
 			),
 		);
 

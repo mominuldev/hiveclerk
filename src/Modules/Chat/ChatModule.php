@@ -42,6 +42,7 @@ use Hiveclerk\Modules\Chat\Services\WidgetConfig;
 use Hiveclerk\Modules\Chat\Streaming\StreamBuffer;
 use Hiveclerk\Modules\Chat\Widget\WidgetLoader;
 use Hiveclerk\Domain\Knowledge\RetrievalServiceInterface;
+use Hiveclerk\Domain\Lead\VisitorResolverInterface;
 use Hiveclerk\Modules\KnowledgeBase\Text\TokenEstimator;
 
 /**
@@ -90,7 +91,8 @@ final class ChatModule extends AbstractModule {
 			static fn ( Container $c ): SessionService => new SessionService(
 				$c->get( SessionRepositoryInterface::class ),
 				$c->get( ConversationRepositoryInterface::class ),
-				$c->get( ClockInterface::class )
+				$c->get( ClockInterface::class ),
+				$c->get( VisitorResolverInterface::class )
 			)
 		);
 
@@ -127,7 +129,8 @@ final class ChatModule extends AbstractModule {
 			PurgeConversationsJob::class,
 			static fn ( Container $c ): PurgeConversationsJob => new PurgeConversationsJob(
 				$c->get( RetentionService::class ),
-				$c->get( QueueInterface::class )
+				$c->get( QueueInterface::class ),
+				$c->get( RateLimiter::class )
 			)
 		);
 

@@ -6,6 +6,277 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Sprint 7 — Leads and scoring
+
+**Goal:** the revenue mechanism.
+
+#### Added
+
+- **The Leads module** (`src/Modules/Leads/`) — `LeadCaptureService` turns
+  a conversation into a person (FR-LED-01, 08), `ScoringService` is the
+  only thing allowed to change a score (FR-LED-03), `AiScorer` asks the
+  model what it makes of a lead (FR-LED-04), `VisitorService` stitches
+  anonymous sessions to it (FR-LED-07), `PipelineService` owns the board's
+  columns (FR-LED-05), `LeadNotifier` tells somebody (FR-LED-09) and
+  `LeadExporter` gets it out (FR-LED-10).
+- **A rule engine that imports nothing** (`src/Domain/Lead/Scoring/`).
+  Four kinds — field, keyword, page and engagement — with a closed
+  operator vocabulary. That a customer's scoring rules cannot execute
+  anything is checkable by reading two files rather than by trusting a
+  sanitiser.
+- **Seven rules already in force on day one.** An unconfigured scoring
+  engine scores every lead zero, and a pipeline of identical cold cards
+  is not a neutral starting point — it is the feature appearing broken.
+  The Scoring screen says out loud that they are suggestions until saved.
+- **The append-only score log does what D7 §5.2 says.** Every change is
+  two writes in a fixed order: an immutable event carrying its own
+  running total and its own explanation, then the materialised column
+  the board sorts by. `recalculate()` rebuilds one from the other.
+- **Contact extraction by pattern, not by model** — a second completion
+  per visitor message is a second bill for the same conversation, which
+  is the one thing SEC-03 says not to add. It finds addresses and phone
+  numbers reliably and names and companies only when stated outright.
+- **Qualification answers paired without a model call** (FR-LED-02). The
+  clerk is instructed to ask one thing at a time, so the assistant turn
+  before a visitor's reply *is* the question; matching it against the
+  configured wording by word overlap is enough to know which one.
+- **The pipeline board** (D11 §6.1) with drag-and-drop, the table view,
+  and the lead detail with the attributed score breakdown (D11 §6.2) —
+  every line named, every AI line carrying the sentence that justifies
+  it, and the lines visibly adding up to the number above them.
+- **`/public/events`** (D9 §2.5) — a whitelisted event vocabulary, per-IP
+  ceiling, and nothing written at all on a page where no clerk serves.
+- **The in-chat capture card** (D11 §13.1), with *Not now* rendered at
+  the same weight as *Send it*.
+- **`M0010_LeadPipeline`** — seeds the five default stages and indexes
+  `source` and `last_active_at`, the two paths the board introduced.
+- REST: 15 new routes — the `/admin/leads` surface, `/admin/leads/stages`,
+  `/admin/leads/scoring-rules`, `/public/leads` and `/public/events`.
+
+#### Fixed
+
+- **Every public rate limit was half what it said.** WordPress calls a
+  `permission_callback` twice per request: once to authorise the call and
+  again from `rest_send_allow_header()`, which re-runs every handler's
+  callback to work out which methods to advertise. Ours consumes a unit
+  of the customer's ceiling, so a widget configured for twelve messages a
+  minute began refusing at six — and told the visitor they were going too
+  fast when they were not. Shipped in Sprint 5, invisible because nobody
+  counted. `AbstractController::throttle()` now memoises per request.
+- **The rate limiter was not limiting anything on most installs.** It
+  counted in the object cache, and WordPress's default object cache lives
+  for exactly one request — so every caller it was meant to count reset
+  it. The class docblock has claimed a database fallback since Sprint 1
+  and the table has existed since M0007; neither was ever wired up. Found
+  by sending 60 requests at a ceiling of 40 and watching all 60 succeed.
+- **Every route was registered three times.** `rest_api_init` fires more
+  than once per request, the modules re-ran their listeners on each
+  firing, and `RestServer` appended rather than replaced. `register_rest_route()`
+  adds a handler rather than replacing one, so this compounded the
+  throttle bug above.
+- **`enum` on a route argument was decoration.** WordPress only checks it
+  when a `validate_callback` is registered alongside, so
+  `/public/events` accepted any event name and wrote a visitor row for
+  it. The service-layer whitelist meant nothing was stored, but an
+  unauthenticated endpoint that accepts junk and writes anyway is not
+  what the docblock claimed. Also affected the message rating (`-1|1`).
+- **`stamp()`, `time()` and `text()` existed four times over.** Promoted
+  to `AbstractRepository` and the copies deleted.
+- **The SSRF pre-flight check was private to the crawler.** Extracted to
+  `OutboundUrlGuard` because the second caller arrived: a Slack webhook
+  URL typed into a settings field is the same primitive as a URL typed
+  into a crawl form.
+
+#### Security
+
+- **The CSV export neutralises formulas.** Every string in it came from a
+  website visitor, and a cell starting `=`, `+`, `-` or `@` is executed
+  when the file opens in Excel, Sheets or Numbers — so
+  `=HYPERLINK("http://evil","click")` in a company-name field is a
+  working attack carried out by our own file on the machine of whoever
+  opens it. Prefixed with an apostrophe, which every spreadsheet reads as
+  text.
+- **The Slack webhook goes through the same guard as a crawl target**,
+  and only `https://` is accepted.
+- **The capture endpoint tells the visitor nothing.** It answers
+  `{captured: true}` and never a score, a band or a lead id — those are
+  the customer's commercial assessment of the person reading them.
+- **Qualification questions are not in the widget payload.** The clerk
+  asks them in conversation; publishing them would put a customer's sales
+  criteria on every page of their own site.
+- **The AI scorer treats the transcript as data**, fenced with a
+  per-request nonce, and is bounded to ±20 whatever it decides to believe.
+
+#### Decisions worth recording
+
+- **The email hash is unsalted, deliberately.** The address sits in the
+  next column, so a salt protects nothing — and it would break the thing
+  the hash exists for. WordPress salts get regenerated (a routine
+  response to a suspected compromise, and something several security
+  plugins do unprompted), and a salted hash would then stop matching a
+  site's own existing leads while the unique index quietly began admitting
+  the duplicates it was added to prevent.
+- **Rules run inline; the model runs as a job three minutes later.**
+  Extraction is patterns over a capped transcript and the rule pass is an
+  in-memory walk, so an operator sees the lead appear while the visitor
+  is still typing. The model's opinion is a second billable completion,
+  and asked at the moment of capture it would be reading a greeting and
+  an address — a worse assessment *and* one that reads as the product not
+  paying attention.
+- **An AI adjustment with no rationale is discarded, not stored.** A
+  number from a model is worth nothing to a sales team; "+12 — asked
+  about implementation timeline and named a decision date" can be checked
+  against the transcript beside it. Storing the first kind is what makes
+  a team stop trusting the whole score.
+- **`score_after` is stamped at write time, never derived.** A running
+  total recomputed on read would change retrospectively the first time
+  somebody edits a rule's weight, and the breakdown would stop adding up
+  to the history it claims to describe.
+- **A lead is created only once there is a way to reach somebody.** A row
+  holding a first name is not a lead, it is a card nobody can act on —
+  and it would be created for every visitor who typed "I'm interested".
+- **Extraction fails towards nothing.** A missed name is a blank field an
+  operator fills in; a wrong name is a lead they greet as somebody else.
+  "I'm looking for a quote" produces no lead called Looking.
+- **Capture is off for every clerk, including existing ones.** A clerk
+  that started asking for email addresses because the plugin updated has
+  changed the customer's site behaviour without being told to, and the
+  first person to notice is a visitor.
+- **Status and stage are different things and the product needs both.** A
+  stage is whatever the customer named their columns and changes when
+  they reorganise; status is the fixed vocabulary CRM connectors map onto
+  and reports count. Only the terminal columns speak for the status —
+  moving a card into "Demo booked" says nothing about qualification.
+- **Deleting a stage never deletes what is in it.** Somebody tidying
+  their board has not asked to lose the people standing in that column.
+- **A merge rebuilds the score rather than adding two together.** Two
+  leads that each scored "gave a business email" would otherwise be worth
+  thirty points for one address, and an award-once rule cannot un-fire.
+- **Lead changes go to the lead's timeline, not the audit log.** The
+  audit log answers "who changed the configuration of this site", and a
+  salesperson moving cards forty times a day would bury the one entry in
+  it that matters — the API key. Stages and scoring rules *are*
+  configuration and do go there.
+- **Threshold notifications are sent once per lead, ever.** A score moves
+  several times in one conversation and each write crosses the threshold
+  from its own point of view. Four emails about one person is how a sales
+  team learns to filter this sender into a folder.
+- **The visitor identifier is a server-minted uuid in localStorage and
+  nothing else.** No cookie, no canvas fingerprint, nothing derived from
+  the device. Somebody who clears it is a new visitor, which is the
+  correct outcome for a plugin whose promise is that the data stays on
+  the customer's server.
+- **The board's telemetry writes nothing when no clerk serves the page.**
+  A site with the widget switched off does not accumulate a visitor
+  table.
+- **The export comes back inside JSON and the browser makes the file.**
+  The admin authenticates with a cookie plus a nonce header and a plain
+  download link carries neither; the alternative was a second auth
+  mechanism to design, review and get wrong.
+- **The rule editor's dropdowns are served, not hard-coded.** Two lists
+  of operators that drift apart produce a rule the editor offers and the
+  engine does not understand.
+- **A stage colour is a token name, not a hex.** A card has to stay
+  readable in both themes and there is no contrast check that survives an
+  arbitrary value.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, driven with Playwright, curl
+and `wp eval-file` against the real site.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **398**, 1,748 assertions (53 new) |
+| Integration tests | **22**, 70 assertions (8 new, all SQL) |
+| SEC-04 | **60/60 routes gated**, including the 15 added here |
+| Admin bundle | **153.42 KB** gzipped (budget 350; was 145.87) |
+| Widget bundle | **16.74 KB** gzipped (budget 40; was 15.04) |
+
+- **The whole capture path was driven end to end against the database.**
+  A visitor read `/pricing` twice, opened a conversation, gave a name, an
+  address and a company in one sentence, and answered a budget question.
+  The result: one lead, scored 55 with the breakdown `business email +15,
+  company +8, pricing twice +20, buying language +12`, the sum equal to
+  the stored column, `conversation.lead_id` and `visitor.lead_id` both
+  pointing at it, and a timeline that starts at "Viewed /pricing (1st)"
+  — two rows recorded before anybody knew who the visitor was.
+- **Deduplication was asserted, not assumed.** A second conversation
+  giving `Sarah@Nordwind.de` resolved to the lead created by
+  `sarah@nordwind.de`, and one lead row existed afterwards.
+- **The rate limit was measured before and after the fix.** Before: 60
+  requests at a ceiling of 40, all 60 accepted. After the durable
+  counter: 50 requests, 20 accepted — the throttle was consuming two
+  units per request. After the memoisation: 46 requests, exactly 40
+  accepted and 6 refused with 429.
+- **`enum` enforcement was measured.** `{"type":"arbitrary_write"}`
+  returned 200 before and 400 after.
+- **`M0010` applied on MySQL 9.3.0** — five stages seeded in order,
+  `idx_source` and `idx_last_active` both present, database version 10.
+- **Contrast measured in both themes** on the lead detail: 4.83 minimum
+  (the tertiary metadata line), 6.73 and 7.76 for section headings, 15.7
+  and 18.6 for body text. All above the 4.5:1 floor.
+- Unauthenticated `GET /admin/leads` returns 401; `POST /public/leads`
+  without a session token returns 401.
+
+#### Not delivered this sprint
+
+- **`POST /admin/leads/{id}/sync`.** It is in the D9 §3.5 table but it
+  pushes to a CRM, and there is no connector to push to until Sprint 8.
+  Registering an endpoint that answers "no integrations configured" would
+  be a route pretending to be a feature.
+- **A merge screen.** `POST /admin/leads/merge` works and is tested; what
+  is missing is the UI to choose two leads, which needs a picker that
+  belongs with the duplicate-detection work rather than ahead of it. Two
+  leads can only be merged through the API today.
+- **An owner picker.** `owner_user_id` is writable over the API and shown
+  on the lead, but assigning one from the drawer needs a route that lists
+  the site's users, and publishing a user list is a decision worth making
+  deliberately rather than as a side effect of this screen.
+- **Outbound webhooks** for `lead.captured`, `lead.qualified` and
+  `lead.stage_changed`. All three actions fire; the webhook transport is
+  Sprint 8.
+
+#### Known gaps
+
+- **The AI score adjustment has never run against a live provider.** The
+  parser, the bound, the rationale requirement and the refusal path are
+  unit-tested against recorded shapes, and the job's scheduling was
+  exercised, but no real completion has been billed through it. What a
+  real model returns for a real transcript is unmeasured.
+- **The answer matcher misses a heavily paraphrased question.** "And
+  roughly what were you hoping to spend?" against a question configured
+  as "What is your budget?" shares only stopwords and will not match. The
+  answer is still in the transcript and readable; what is missing is the
+  structured field. The failure direction is deliberate — an unmatched
+  answer costs a blank cell, a wrongly matched one puts a timeline into a
+  budget field and then scores it.
+- **The durable rate-limit counter costs two queries per public request**
+  on sites without a persistent object cache, which is most of them. It
+  is the correct trade against no limiting at all, and it is a cost that
+  did not exist last sprint. Not yet measured under load.
+- **The board's drag is pointer-only.** HTML5 drag-and-drop cannot be
+  driven from a keyboard, so the same move is a Stage dropdown in the
+  lead's own panel — the operation is reachable by every input, the
+  gesture is not. A keyboard-first reorder was not attempted.
+- **The export stops at 5,000 rows** and says so in the response and in
+  the toast. A site with more has to narrow by date or stage.
+- **A qualification answer is stored as the whole reply.** A visitor who
+  answers "Around €12,000 this quarter, and we need a quote before the
+  end of the month" gets all of that in the budget field. The numeric
+  rule reads the first number out of it correctly, but the cell an
+  operator sees is a sentence.
+- **Page-view tallies are capped at 50 distinct paths per visitor.**
+  Past that, further views increment the total but not the per-path
+  count, so a page rule for a path first seen after the cap will not
+  fire. A single-page app firing on every route change reaches it.
+- **Nothing has been tested at scale.** The board loads 100 leads a page
+  and the stage counts are one grouped query, but no site with ten
+  thousand leads has been near this.
+
+---
+
 ### Sprint 6 — Clerks and conversations admin
 
 **Goal:** operators can configure and supervise their staff.

@@ -291,17 +291,6 @@ final class AgentRepository extends AbstractRepository implements AgentRepositor
 		return array( $where, $params );
 	}
 
-	/**
-	 * A DateTimeImmutable as a MySQL DATETIME in UTC, or null.
-	 *
-	 * @param DateTimeImmutable|null $value Time.
-	 * @return string|null
-	 */
-	private function stamp( ?DateTimeImmutable $value ): ?string {
-		return null === $value
-			? null
-			: $value->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
-	}
 
 	/**
 	 * Build an Agent from a database row.
@@ -332,19 +321,5 @@ final class AgentRepository extends AbstractRepository implements AgentRepositor
 			budgetResetAt: $this->time( $row['budget_reset_at'] ?? null ),
 			createdAt: $this->time( $row['created_at'] ?? null ),
 		);
-	}
-
-	/**
-	 * Parse a stored DATETIME, which is always UTC.
-	 *
-	 * @param mixed $value Raw column value.
-	 * @return DateTimeImmutable|null
-	 */
-	private function time( mixed $value ): ?DateTimeImmutable {
-		if ( ! is_string( $value ) || '' === $value ) {
-			return null;
-		}
-
-		return new DateTimeImmutable( $value, new DateTimeZone( 'UTC' ) );
 	}
 }

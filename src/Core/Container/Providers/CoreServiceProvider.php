@@ -23,6 +23,8 @@ use Hiveclerk\Core\Events\EventBus;
 use Hiveclerk\Core\Module\ModuleRegistry;
 use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Support\ClockInterface;
+use Hiveclerk\Domain\Lead\NullVisitorResolver;
+use Hiveclerk\Domain\Lead\VisitorResolverInterface;
 use Hiveclerk\Core\Support\SystemClock;
 
 /**
@@ -47,6 +49,14 @@ final class CoreServiceProvider extends ServiceProvider {
 		$container->singleton(
 			EventBus::class,
 			static fn (): EventBus => new EventBus()
+		);
+
+		// The leads module rebinds this with the real thing. Bound here so
+		// that a site which filters that module out still opens widget
+		// sessions instead of failing to build one.
+		$container->singleton(
+			VisitorResolverInterface::class,
+			static fn (): VisitorResolverInterface => new NullVisitorResolver()
 		);
 
 		$container->singleton(

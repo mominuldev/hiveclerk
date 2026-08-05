@@ -72,6 +72,45 @@ final class InMemoryConversations implements ConversationRepositoryInterface {
 		return array();
 	}
 
+	public function forLead( int $leadId, int $limit = 20 ): array {
+		$found = array();
+
+		foreach ( $this->saved as $conversation ) {
+			if ( $conversation->leadId === $leadId ) {
+				$found[] = $conversation;
+			}
+
+			if ( count( $found ) >= $limit ) {
+				break;
+			}
+		}
+
+		return $found;
+	}
+
+	public function attachLead( int $conversationId, int $leadId ): bool {
+		if ( ! isset( $this->saved[ $conversationId ] ) ) {
+			return false;
+		}
+
+		$this->saved[ $conversationId ]->leadId = $leadId;
+
+		return true;
+	}
+
+	public function reassignLead( int $from, int $to ): int {
+		$moved = 0;
+
+		foreach ( $this->saved as $conversation ) {
+			if ( $conversation->leadId === $from ) {
+				$conversation->leadId = $to;
+				++$moved;
+			}
+		}
+
+		return $moved;
+	}
+
 	public function idsStartedBefore( string $cutoff, int $limit ): array {
 		$ids = array();
 

@@ -19,7 +19,9 @@ namespace Hiveclerk\Core\Support;
  *
  * Uses the object cache when a persistent one exists and falls back to a
  * database table otherwise, because on shared hosting the alternative is no
- * limiting at all.
+ * limiting at all — WordPress's default object cache lives for one request,
+ * so a counter kept only there is reset by every caller it is meant to
+ * count.
  */
 final class RateLimiter {
 
@@ -28,10 +30,13 @@ final class RateLimiter {
 	/**
 	 * Construct.
 	 *
-	 * @param ClockInterface $clock Injected so window boundaries are testable.
+	 * @param ClockInterface              $clock Injected so window boundaries are testable.
+	 * @param RateLimitStoreInterface|null $store Durable counter, used when no
+	 *                                            persistent object cache exists.
 	 */
 	public function __construct(
-		private readonly ClockInterface $clock
+		private readonly ClockInterface $clock,
+		private readonly ?RateLimitStoreInterface $store = null
 	) {
 	}
 
@@ -48,7 +53,9 @@ final class RateLimiter {
 		$windowStart = $now - ( $now % $window );
 		$key         = $this->key( $bucket, $windowStart );
 
-		$hits = $this->increment( $key, $window );
+		$hits = $this->usesStore()
+			? (int) $this->store?->increment( $key, $this->stamp( $windowStart ) )
+			: $this->increment( $key, $window );
 
 		$allowed   = $hits <= $limit;
 		$remaining = max( 0, $limit - $hits );
@@ -70,7 +77,9 @@ final class RateLimiter {
 		$windowStart = $now - ( $now % $window );
 		$key         = $this->key( $bucket, $windowStart );
 
-		$hits = (int) wp_cache_get( $key, self::GROUP );
+		$hits = $this->usesStore()
+			? (int) $this->store?->count( $key, $this->stamp( $windowStart ) )
+			: (int) wp_cache_get( $key, self::GROUP );
 
 		return new RateLimitResult(
 			$hits < $limit,
@@ -91,7 +100,59 @@ final class RateLimiter {
 		$now         = $this->clock->now()->getTimestamp();
 		$windowStart = $now - ( $now % $window );
 
-		wp_cache_delete( $this->key( $bucket, $windowStart ), self::GROUP );
+		$key = $this->key( $bucket, $windowStart );
+
+		wp_cache_delete( $key, self::GROUP );
+
+		if ( $this->usesStore() ) {
+			$this->store?->clear( $key );
+		}
+	}
+
+	/**
+	 * Delete counters for windows that have closed.
+	 *
+	 * Called from the nightly purge. Without it the table grows by one row
+	 * per bucket per minute forever, which on a busy site is the largest
+	 * table in the schema within a month — holding nothing anybody reads.
+	 *
+	 * @param int $keepSeconds How much recent history to leave behind.
+	 * @return int Rows removed.
+	 */
+	public function purge( int $keepSeconds = 3600 ): int {
+		if ( ! $this->usesStore() ) {
+			return 0;
+		}
+
+		return (int) $this->store?->purge(
+			$this->stamp( $this->clock->now()->getTimestamp() - $keepSeconds )
+		);
+	}
+
+	/**
+	 * Whether counting has to go through the database.
+	 *
+	 * WordPress ships an object cache that lives for one request. Without
+	 * a persistent drop-in — which most installs do not have — every hit
+	 * counts from zero, so a limiter built on it alone lets through any
+	 * number of requests as long as each arrives in its own. That is the
+	 * SEC-03 defence not working on precisely the hosting this product
+	 * targets, so the database carries it there instead.
+	 *
+	 * @return bool
+	 */
+	private function usesStore(): bool {
+		return null !== $this->store && ! wp_using_ext_object_cache();
+	}
+
+	/**
+	 * A window start as a UTC MySQL DATETIME.
+	 *
+	 * @param int $timestamp Unix time.
+	 * @return string
+	 */
+	private function stamp( int $timestamp ): string {
+		return gmdate( 'Y-m-d H:i:s', $timestamp );
 	}
 
 	/**

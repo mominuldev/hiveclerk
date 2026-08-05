@@ -9,6 +9,8 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Database;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use wpdb;
 
 /**
@@ -264,5 +266,59 @@ abstract class AbstractRepository {
 	 */
 	protected function now(): string {
 		return gmdate( 'Y-m-d H:i:s' );
+	}
+
+	/**
+	 * A DateTimeImmutable as a MySQL DATETIME in UTC, or null.
+	 *
+	 * Every timestamp column in this schema is DATETIME holding UTC, never
+	 * TIMESTAMP — so the conversion has to happen on the way in rather
+	 * than being left to MySQL, which would apply the connection's zone.
+	 *
+	 * @param DateTimeImmutable|null $value Time.
+	 * @return string|null
+	 */
+	protected function stamp( ?DateTimeImmutable $value ): ?string {
+		return null === $value
+			? null
+			: $value->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
+	}
+
+	/**
+	 * Parse a stored DATETIME, which is always UTC.
+	 *
+	 * @param mixed $value Raw column value.
+	 * @return DateTimeImmutable|null
+	 */
+	protected function time( mixed $value ): ?DateTimeImmutable {
+		if ( ! is_string( $value ) || '' === $value ) {
+			return null;
+		}
+
+		return new DateTimeImmutable( $value, new DateTimeZone( 'UTC' ) );
+	}
+
+	/**
+	 * A nullable string column, with the empty string read as absent.
+	 *
+	 * MySQL hands back '' for a column an INSERT left unset, and the
+	 * entities distinguish "not given" from "given as nothing" — an empty
+	 * company name would otherwise satisfy a `not_empty` scoring rule.
+	 *
+	 * @param mixed $value Raw column value.
+	 * @return string|null
+	 */
+	protected function text( mixed $value ): ?string {
+		return is_string( $value ) && '' !== $value ? $value : null;
+	}
+
+	/**
+	 * A nullable integer column.
+	 *
+	 * @param mixed $value Raw column value.
+	 * @return int|null
+	 */
+	protected function intOrNull( mixed $value ): ?int {
+		return null === $value ? null : (int) $value;
 	}
 }

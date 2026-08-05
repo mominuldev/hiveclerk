@@ -16,6 +16,8 @@ use Hiveclerk\Domain\Conversation\Conversation;
 use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
 use Hiveclerk\Domain\Conversation\Session;
 use Hiveclerk\Domain\Conversation\SessionRepositoryInterface;
+use Hiveclerk\Domain\Lead\Visitor;
+use Hiveclerk\Domain\Lead\VisitorResolverInterface;
 use Hiveclerk\Domain\Shared\Uuid;
 
 /**
@@ -75,11 +77,13 @@ final class SessionService {
 	 * @param SessionRepositoryInterface      $sessions      Session storage.
 	 * @param ConversationRepositoryInterface $conversations Conversation storage.
 	 * @param ClockInterface                  $clock         Time source.
+	 * @param VisitorResolverInterface        $visitors      Who is typing, when that is knowable.
 	 */
 	public function __construct(
 		private readonly SessionRepositoryInterface $sessions,
 		private readonly ConversationRepositoryInterface $conversations,
-		private readonly ClockInterface $clock
+		private readonly ClockInterface $clock,
+		private readonly VisitorResolverInterface $visitors
 	) {
 	}
 
@@ -88,17 +92,28 @@ final class SessionService {
 	 *
 	 * @param Agent                $agent   The clerk being addressed.
 	 * @param array<string, mixed> $context Page url, language.
-	 * @return array{token: string, session: Session, conversation: Conversation}
+	 * @return array{token: string, session: Session, conversation: Conversation, visitor: Visitor|null}
 	 */
 	public function issue( Agent $agent, array $context = array() ): array {
 		$now     = $this->clock->now();
 		$expires = $now->modify( '+' . self::LIFETIME . ' seconds' );
+
+		// Resolved before the conversation is written rather than attached
+		// afterwards. The visit history a scoring rule reads is the one
+		// that happened *before* this conversation, and a conversation
+		// saved without a visitor id has nothing to join it back to.
+		$visitor = $this->visitors->resolve(
+			is_string( $context['visitor'] ?? null ) ? (string) $context['visitor'] : null,
+			$context
+		);
 
 		$conversation = $this->conversations->save(
 			new Conversation(
 				id: null,
 				uuid: Uuid::generate(),
 				agentId: (int) $agent->id,
+				visitorId: $visitor?->id,
+				leadId: $visitor?->leadId,
 				language: $this->language( $context ),
 				pageUrl: $this->pageUrl( $context ),
 			)
@@ -112,6 +127,7 @@ final class SessionService {
 				uuid: $uuid,
 				tokenHash: $this->hash( $token ),
 				conversationId: $conversation->id,
+				visitorId: $visitor?->id,
 				transport: 'sse',
 				ipHash: $this->hashedIp(),
 				expiresAt: $expires,
@@ -130,6 +146,7 @@ final class SessionService {
 			'token'        => $token,
 			'session'      => $session,
 			'conversation' => $conversation,
+			'visitor'      => $visitor,
 		);
 	}
 

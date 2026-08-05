@@ -140,6 +140,42 @@ final class ConversationRepository extends AbstractRepository implements Convers
 		return array_map( fn ( array $row ): Conversation => $this->hydrate( $row ), $rows );
 	}
 
+	public function forLead( int $leadId, int $limit = 20 ): array {
+		$rows = $this->fetchAll(
+			'lead_id = %d',
+			array( $leadId ),
+			'started_at',
+			'DESC',
+			$limit
+		);
+
+		return array_map( fn ( array $row ): Conversation => $this->hydrate( $row ), $rows );
+	}
+
+	public function attachLead( int $conversationId, int $leadId ): bool {
+		$table = $this->tableName();
+
+		// A targeted write rather than a save(). Capture runs while the
+		// conversation object in the request has counters the caller is
+		// still adding to, and writing the whole row here would persist a
+		// half-updated copy of it.
+		return $this->execute(
+			"UPDATE `{$table}` SET lead_id = %d WHERE id = %d",
+			array( $leadId, $conversationId )
+		);
+	}
+
+	public function reassignLead( int $from, int $to ): int {
+		$table = $this->tableName();
+
+		$done = $this->execute(
+			"UPDATE `{$table}` SET lead_id = %d WHERE lead_id = %d",
+			array( $to, $from )
+		);
+
+		return $done ? (int) $this->db->rows_affected : 0;
+	}
+
 	public function idsStartedBefore( string $cutoff, int $limit ): array {
 		$table = $this->tableName();
 
@@ -355,31 +391,7 @@ final class ConversationRepository extends AbstractRepository implements Convers
 		);
 	}
 
-	/**
-	 * A DateTimeImmutable as a MySQL DATETIME in UTC, or null.
-	 *
-	 * @param DateTimeImmutable|null $value Time.
-	 * @return string|null
-	 */
-	private function stamp( ?DateTimeImmutable $value ): ?string {
-		return null === $value
-			? null
-			: $value->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' );
-	}
 
-	/**
-	 * Parse a stored DATETIME, which is always UTC.
-	 *
-	 * @param mixed $value Raw column value.
-	 * @return DateTimeImmutable|null
-	 */
-	private function time( mixed $value ): ?DateTimeImmutable {
-		if ( ! is_string( $value ) || '' === $value ) {
-			return null;
-		}
-
-		return new DateTimeImmutable( $value, new DateTimeZone( 'UTC' ) );
-	}
 
 	/**
 	 * Build a Conversation from a database row.

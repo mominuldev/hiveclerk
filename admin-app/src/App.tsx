@@ -11,6 +11,10 @@ import { Clerks } from '@/routes/clerks/Clerks';
 import { ClerkEditor } from '@/routes/clerks/ClerkEditor';
 import { Conversations } from '@/routes/conversations/Conversations';
 import { KnowledgeShell } from '@/routes/knowledge/KnowledgeShell';
+import { LeadsShell } from '@/routes/leads/LeadsShell';
+import { Pipeline } from '@/routes/leads/Pipeline';
+import { LeadTable } from '@/routes/leads/LeadTable';
+import { ScoringRules } from '@/routes/leads/ScoringRules';
 import { Playground } from '@/routes/knowledge/Playground';
 import { EmbeddingSettings } from '@/routes/knowledge/EmbeddingSettings';
 
@@ -37,13 +41,6 @@ const client = new QueryClient({
 });
 
 const SCAFFOLDED = [
-  {
-    path: 'leads',
-    area: 'Leads',
-    sprint: 'Sprint 7',
-    summary:
-      'Pipeline board, attributed score breakdowns, and qualification rules.',
-  },
   {
     path: 'integrations',
     area: 'Integrations',
@@ -76,6 +73,16 @@ export function App() {
             <Route path="clerks" element={<Clerks />} />
             <Route path="clerks/:uuid" element={<ClerkEditor />} />
             <Route path="conversations" element={<Conversations />} />
+
+            <Route path="leads" element={<LeadsShell />}>
+              {/* Redirect rather than an index element, so the tab bar
+                  always has an active tab and a bookmarked /leads still
+                  lands somewhere nameable. */}
+              <Route index element={<Navigate to="pipeline" replace />} />
+              <Route path="pipeline" element={<Pipeline />} />
+              <Route path="table" element={<LeadTable />} />
+              <Route path="scoring" element={<ScoringRules />} />
+            </Route>
             <Route path="knowledge" element={<KnowledgeShell />}>
               {/* Redirect rather than an index element, so the tab bar
                   always has an active tab and a bookmarked /knowledge

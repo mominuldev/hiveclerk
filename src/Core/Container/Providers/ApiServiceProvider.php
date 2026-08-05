@@ -26,6 +26,7 @@ use Hiveclerk\Api\RestServer;
 use Hiveclerk\Core\Container\Container;
 use Hiveclerk\Core\Container\ServiceProvider;
 use Hiveclerk\Core\Support\ClockInterface;
+use Hiveclerk\Core\Support\RateLimitStoreInterface;
 use Hiveclerk\Core\Support\Encryptor;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Database\Migrator;
@@ -53,7 +54,8 @@ final class ApiServiceProvider extends ServiceProvider {
 		$container->singleton(
 			RateLimiter::class,
 			static fn ( Container $c ): RateLimiter => new RateLimiter(
-				$c->get( ClockInterface::class )
+				$c->get( ClockInterface::class ),
+				$c->get( RateLimitStoreInterface::class )
 			)
 		);
 

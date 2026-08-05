@@ -17,6 +17,20 @@ const SESSION_KEY = 'hvc.session';
 const TRANSPORT_KEY = 'hvc.transport';
 
 /**
+ * Where the visitor identifier is kept.
+ *
+ * localStorage rather than sessionStorage, and it is the only thing in
+ * the widget that outlives a tab. "Visited pricing twice" is a scoring
+ * rule, and a per-tab identifier would make every visit the first one.
+ *
+ * It is a random uuid the server minted and nothing else — no
+ * fingerprint, no cookie, nothing derived from the device. A visitor who
+ * clears it is a new visitor, which is the correct outcome for a plugin
+ * whose promise is that the data stays on the customer's own server.
+ */
+const VISITOR_KEY = 'hvc.visitor';
+
+/**
  * Session storage, defensively.
  *
  * Storage throws rather than returns null in a handful of real
@@ -41,6 +55,22 @@ function writeStore(key: string, value: string): void {
   }
 }
 
+function readLocal(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocal(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* Without storage the visitor is new on every page. Still works. */
+  }
+}
+
 export class Api {
   private session: StoredSession | null = null;
 
@@ -62,6 +92,9 @@ export class Api {
         url: window.location.href,
         title: document.title,
         language: navigator.language,
+        // Sent so the conversation carries the visit history that led to
+        // it. Without this a lead's timeline starts at "lead captured".
+        visitor: readLocal(VISITOR_KEY),
       }),
     });
 
@@ -209,6 +242,74 @@ export class Api {
       awaitingHuman: body.data.awaiting_human === true,
       humanActive: body.data.status === 'handoff_active',
     };
+  }
+
+  /**
+   * Tell the server this page was seen (FR-LED-07).
+   *
+   * Fire and forget, and silent on failure. Telemetry that surfaces an
+   * error to a visitor reading a blog post is worse than telemetry that
+   * is missing, and every page-context scoring rule already treats an
+   * absent count as zero.
+   */
+  async pageView(): Promise<void> {
+    try {
+      const response = await fetch(`${this.boot.rest_url}/public/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'page_view',
+          visitor: readLocal(VISITOR_KEY),
+          url: window.location.href,
+          title: document.title,
+          language: navigator.language,
+        }),
+      });
+
+      if (response.status !== 200) {
+        return;
+      }
+
+      const body = (await response.json()) as { data?: { visitor?: string } };
+
+      if (body.data?.visitor) {
+        writeLocal(VISITOR_KEY, body.data.visitor);
+      }
+    } catch {
+      /* No network, no page view. Nothing on screen changes. */
+    }
+  }
+
+  /**
+   * Submit the in-chat capture form (FR-LED-01).
+   *
+   * The response says only whether it was accepted. A score, a stage or a
+   * lead id echoed back to the browser would be the customer's own
+   * commercial assessment of the person reading it.
+   */
+  async capture(fields: {
+    email?: string;
+    first_name?: string;
+    phone?: string;
+    company?: string;
+    consent?: boolean;
+  }): Promise<boolean> {
+    const token = await this.token();
+
+    const response = await fetch(`${this.boot.rest_url}/public/leads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-HVC-Session': token,
+      },
+      body: JSON.stringify(fields),
+    });
+
+    if (response.status === 401) {
+      this.forget();
+    }
+
+    return response.ok;
   }
 
   /** Record a thumbs up or down. */

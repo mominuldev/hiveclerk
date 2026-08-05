@@ -20,9 +20,22 @@ use Hiveclerk\Database\Migrations\M0006_Integrations;
 use Hiveclerk\Database\Migrations\M0007_Platform;
 use Hiveclerk\Database\Migrations\M0008_UsageCostNullable;
 use Hiveclerk\Database\Migrations\M0009_ConversationSupervision;
+use Hiveclerk\Database\Migrations\M0010_LeadPipeline;
+use Hiveclerk\Database\Repositories\ActivityRepository;
 use Hiveclerk\Database\Repositories\AuditRepository;
+use Hiveclerk\Database\Repositories\LeadRepository;
+use Hiveclerk\Database\Repositories\LeadStageRepository;
+use Hiveclerk\Database\Repositories\RateLimitRepository;
+use Hiveclerk\Database\Repositories\ScoreEventRepository;
 use Hiveclerk\Database\Repositories\UsageRepository;
+use Hiveclerk\Database\Repositories\VisitorRepository;
+use Hiveclerk\Core\Support\RateLimitStoreInterface;
 use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
+use Hiveclerk\Domain\Lead\ActivityRepositoryInterface;
+use Hiveclerk\Domain\Lead\LeadRepositoryInterface;
+use Hiveclerk\Domain\Lead\LeadStageRepositoryInterface;
+use Hiveclerk\Domain\Lead\ScoreEventRepositoryInterface;
+use Hiveclerk\Domain\Lead\VisitorRepositoryInterface;
 use Hiveclerk\Domain\Usage\UsageRepositoryInterface;
 use Hiveclerk\Database\Migrator;
 use Hiveclerk\Database\Repositories\AgentRepository;
@@ -59,6 +72,7 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		M0007_Platform::class,
 		M0008_UsageCostNullable::class,
 		M0009_ConversationSupervision::class,
+		M0010_LeadPipeline::class,
 	);
 
 	/**
@@ -119,6 +133,36 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		$container->singleton(
 			AuditRepositoryInterface::class,
 			static fn (): AuditRepositoryInterface => new AuditRepository()
+		);
+
+		$container->singleton(
+			LeadRepositoryInterface::class,
+			static fn (): LeadRepositoryInterface => new LeadRepository()
+		);
+
+		$container->singleton(
+			LeadStageRepositoryInterface::class,
+			static fn (): LeadStageRepositoryInterface => new LeadStageRepository()
+		);
+
+		$container->singleton(
+			ScoreEventRepositoryInterface::class,
+			static fn (): ScoreEventRepositoryInterface => new ScoreEventRepository()
+		);
+
+		$container->singleton(
+			ActivityRepositoryInterface::class,
+			static fn (): ActivityRepositoryInterface => new ActivityRepository()
+		);
+
+		$container->singleton(
+			VisitorRepositoryInterface::class,
+			static fn (): VisitorRepositoryInterface => new VisitorRepository()
+		);
+
+		$container->singleton(
+			RateLimitStoreInterface::class,
+			static fn (): RateLimitStoreInterface => new RateLimitRepository()
 		);
 	}
 }

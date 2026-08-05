@@ -240,6 +240,13 @@ final class ChatService {
 		// and once as the question.
 		array_pop( $history );
 
+		// Two facts the capture instructions need, computed here because
+		// this is where they are already known. ChatService knows nothing
+		// else about leads: whether to ask, what to ask and what to do with
+		// the answer are all decided elsewhere.
+		$context['visitor_messages'] = $this->visitorTurns( $history ) + 1;
+		$context['lead_known']       = $conversation->hasLead();
+
 		$prompt   = $this->prompts->build( $agent, $message, $history, $retrieved, $context );
 		$uuid     = Uuid::generate();
 		$started  = microtime( true );
@@ -596,6 +603,24 @@ final class ChatService {
 			),
 			$citations
 		);
+	}
+
+	/**
+	 * How many messages the visitor has sent in the replayed history.
+	 *
+	 * @param array<int, Message> $history Prior turns.
+	 * @return int
+	 */
+	private function visitorTurns( array $history ): int {
+		$turns = 0;
+
+		foreach ( $history as $message ) {
+			if ( MessageRole::Visitor === $message->role ) {
+				++$turns;
+			}
+		}
+
+		return $turns;
 	}
 
 	/**

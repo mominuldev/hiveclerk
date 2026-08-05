@@ -47,3 +47,98 @@ if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {
 	define( 'DAY_IN_SECONDS', 86400 );
 	define( 'WEEK_IN_SECONDS', 604800 );
 }
+
+/*
+ * A minimal WP_Error.
+ *
+ * Brain Monkey stubs functions, not classes, and ApiResponse::error()
+ * returns a real WP_Error — so any unit test that walks a refusal path
+ * needs the class to exist. Only the surface this codebase touches is
+ * implemented; anything else should fail loudly rather than pretend.
+ */
+if ( ! class_exists( 'WP_Error' ) ) {
+	// phpcs:ignore Generic.Classes.OpeningBraceSameLine.ContentAfterBrace
+	class WP_Error {
+
+		/**
+		 * Messages by code.
+		 *
+		 * @var array<string, array<int, string>>
+		 */
+		public array $errors = array();
+
+		/**
+		 * Data by code.
+		 *
+		 * @var array<string, mixed>
+		 */
+		public array $error_data = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase
+
+		/**
+		 * Construct.
+		 *
+		 * @param string $code    Error code.
+		 * @param string $message Message.
+		 * @param mixed  $data    Data.
+		 */
+		public function __construct( string $code = '', string $message = '', mixed $data = null ) {
+			if ( '' === $code ) {
+				return;
+			}
+
+			$this->errors[ $code ][] = $message;
+
+			if ( null !== $data ) {
+				$this->error_data[ $code ] = $data; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase
+			}
+		}
+
+		/**
+		 * The first error code.
+		 *
+		 * @return string
+		 */
+		public function get_error_code(): string {
+			$codes = array_keys( $this->errors );
+
+			return (string) ( $codes[0] ?? '' );
+		}
+
+		/**
+		 * The first message for a code.
+		 *
+		 * @param string $code Error code, or empty for the first.
+		 * @return string
+		 */
+		public function get_error_message( string $code = '' ): string {
+			$code = '' === $code ? $this->get_error_code() : $code;
+
+			return (string) ( $this->errors[ $code ][0] ?? '' );
+		}
+
+		/**
+		 * The data attached to a code.
+		 *
+		 * @param string $code Error code, or empty for the first.
+		 * @return mixed
+		 */
+		public function get_error_data( string $code = '' ): mixed {
+			$code = '' === $code ? $this->get_error_code() : $code;
+
+			return $this->error_data[ $code ] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase
+		}
+
+		/**
+		 * Merge more data into a code.
+		 *
+		 * @param mixed  $data Data.
+		 * @param string $code Error code, or empty for the first.
+		 * @return void
+		 */
+		public function add_data( mixed $data, string $code = '' ): void {
+			$code = '' === $code ? $this->get_error_code() : $code;
+
+			$this->error_data[ $code ] = $data; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase
+		}
+	}
+}

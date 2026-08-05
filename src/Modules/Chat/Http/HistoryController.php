@@ -105,9 +105,12 @@ final class HistoryController extends PublicController {
 						'sanitize_callback' => 'sanitize_text_field',
 					),
 					'rating'  => array(
-						'type'     => 'integer',
-						'required' => true,
-						'enum'     => array( -1, 1 ),
+						'type'              => 'integer',
+						'required'          => true,
+						'enum'              => array( -1, 1 ),
+						// Without this WordPress does not check the enum at
+						// all, and a rating of 7 reaches the service.
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'comment' => array(
 						'type'              => 'string',

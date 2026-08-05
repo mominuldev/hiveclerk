@@ -125,6 +125,44 @@ abstract class Migration {
 	}
 
 	/**
+	 * Insert one row.
+	 *
+	 * Migrations are usually structure, but a table whose first useful
+	 * state is not "empty" needs its rows creating once and never again —
+	 * and once-and-never-again is exactly what a versioned runner
+	 * guarantees and a bootstrap check does not.
+	 *
+	 * @param string               $table Schema constant.
+	 * @param array<string, mixed> $row   Column values, escaped by wpdb.
+	 * @return void
+	 */
+	protected function insert( string $table, array $row ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->insert( Schema::table( $table ), $row );
+	}
+
+	/**
+	 * How many rows a table holds.
+	 *
+	 * @param string $table Schema constant.
+	 * @return int
+	 */
+	protected function rowCount( string $table ): int {
+		global $wpdb;
+
+		$name = Schema::table( $table );
+
+		// The table name is a Schema constant, which is the whole reason
+		// Schema::table() throws on anything not in its allowlist — an
+		// identifier cannot be parameterised, so it has to be unreachable
+		// from input instead.
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$name}`" );
+	}
+
+	/**
 	 * Drop a table.
 	 *
 	 * @param string $table Schema constant.
