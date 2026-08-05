@@ -69,6 +69,23 @@ All notable changes are documented here. Format follows
 
 #### Fixed
 
+- **`#/analytics/clerks` blanked the entire admin, not just its own
+  panel.** `StatusDot` keys a lookup table on `DutyStatus` — what an
+  operator sees (`on_duty`) — while the report payload carries
+  `AgentStatus`, the stored lifecycle value (`published`). Every other
+  screen goes through `dutyStatus()`; `ClerkReport` passed the wire value
+  straight in under an `as never`, which is the only reason `tsc` stayed
+  green. The lookup missed, `meta.label` read a property off `undefined`,
+  and with no error boundary anywhere in the SPA the throw unmounted the
+  whole React tree — so the symptom was a white screen on every route,
+  not a broken badge on one. The endpoint was healthy throughout, which
+  is why it read as a loading failure. Fixed by extracting
+  `storedDutyStatus()` for payloads that carry a status and no budget,
+  and by typing `AgentReportRow.agent.status` as the real union instead
+  of `string` so the next mismatch is a compile error. `StatusDot` now
+  falls back to `draft` on a miss: the type is the guard, but a badge
+  should never be able to take the application down with it.
+
 - **The per-clerk comparison was always missing today.** `series()`
   merged today's live figures over the stored rollup; `byAgent()` read
   only the stored rows, and today is never stored. Every clerk read zero

@@ -36,7 +36,12 @@ interface StatusDotProps {
 }
 
 export function StatusDot({ status, iconOnly = false, className }: StatusDotProps) {
-  const meta = STATUS[status];
+  // A miss used to read `.label` off undefined and throw. There is no error
+  // boundary above this, so one unmapped value did not break a badge — it
+  // unmounted the whole admin and the screen went white. Falling back to
+  // draft renders something honest and keeps the rest of the page alive;
+  // the type is still the real guard against getting here.
+  const meta = STATUS[status] ?? STATUS.draft;
 
   return (
     <span

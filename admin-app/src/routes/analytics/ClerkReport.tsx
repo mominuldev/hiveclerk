@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { BarRow } from '@/components/charts/BarRow';
 import { useAgentReport } from '@/api/queries/useAnalytics';
+import { storedDutyStatus } from '@/routes/clerks/status';
 import { useReportFilters } from './AnalyticsShell';
 import { formatCost } from '@/lib/format';
 
@@ -52,7 +53,7 @@ export function ClerkReport() {
               key={row.agent.uuid}
               label={
                 <span className="inline-flex items-center gap-2">
-                  <StatusDot status={row.agent.status as never} iconOnly />
+                  <StatusDot status={storedDutyStatus(row.agent.status)} iconOnly />
                   <Link
                     to={`/clerks/${row.agent.uuid}`}
                     className="hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"

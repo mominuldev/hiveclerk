@@ -64,7 +64,18 @@ export interface OverviewResponse {
 }
 
 export interface AgentReportRow {
-  agent: { id: number; uuid: string; name: string; status: string };
+  /**
+   * `status` is the stored lifecycle value, not a DutyStatus. Typed as the
+   * union rather than `string` so passing it somewhere expecting duty
+   * states is a compile error — it was `string`, and the cast that silenced
+   * the mismatch reached the browser as a blank screen.
+   */
+  agent: {
+    id: number;
+    uuid: string;
+    name: string;
+    status: 'draft' | 'published' | 'paused' | 'archived';
+  };
   conversations: number;
   messages: number;
   leads_captured: number;
