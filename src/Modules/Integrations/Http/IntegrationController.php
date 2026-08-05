@@ -258,21 +258,36 @@ final class IntegrationController extends AbstractController {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function connect( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		// FR-CRM-10. Gated on the connect rather than on the read: the
-		// grid still lists every connector on a free install, because
-		// seeing what is available is how somebody decides to buy it.
-		// Nothing already connected is disconnected when a licence
-		// lapses — the sync stops, the configuration stays.
-		$refusal = $this->licence->refusal( Feature::Crm );
-
-		if ( null !== $refusal ) {
-			return $refusal;
-		}
-
 		$connector = $this->connector( $request );
 
 		if ( $connector instanceof WP_Error ) {
 			return $connector;
+		}
+
+		/*
+		 * FR-CRM-10, and only for the connectors that claim it.
+		 *
+		 * The descriptor's own `isPro` flag decides, rather than the
+		 * endpoint deciding for every connector alike. Slack and the
+		 * signed webhook are declared free on purpose: FR-CRM-09 calls
+		 * the webhook the universal fallback, and its whole point is
+		 * that a customer we will never write an adapter for can reach
+		 * their CRM through Zapier or twenty lines of PHP. Charging for
+		 * the fallback takes that away from exactly the users the free
+		 * tier exists to win.
+		 *
+		 * Gated on the connect rather than on the read: the grid still
+		 * lists every connector on a free install, because seeing what
+		 * is available is how somebody decides to buy it. Nothing
+		 * already connected is disconnected when a licence lapses — the
+		 * sync stops, the configuration stays.
+		 */
+		if ( $connector->descriptor()->isPro ) {
+			$refusal = $this->licence->refusal( Feature::Crm );
+
+			if ( null !== $refusal ) {
+				return $refusal;
+			}
 		}
 
 		if ( ! $connector->isAvailable() ) {

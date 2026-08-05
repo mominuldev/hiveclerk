@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
 import { relative } from '@/lib/format';
 import type { IntegrationCard } from '@/api/queries/useIntegrations';
+import { useFeature } from '@/api/queries/useLicence';
 
 interface ConnectorCardProps {
   card: IntegrationCard;
@@ -30,6 +31,7 @@ export function ConnectorCard({
   onConnect,
   onConfigure,
 }: ConnectorCardProps) {
+  const hasCrm = useFeature('crm');
   const unavailable = !card.available;
   const connected = card.status === 'connected' || card.status === 'degraded';
 
@@ -46,7 +48,11 @@ export function ConnectorCard({
         <h3 className="font-display text-sm font-bold tracking-[-0.01em] text-content">
           {card.name}
         </h3>
-        {card.is_pro && !connected && (
+        {/* Only when the tier does not already cover it. A "Pro" badge
+            beside a connector an Agency licence includes reads as a
+            refusal, and the operator goes looking for a paywall that is
+            not there. */}
+        {card.is_pro && !connected && !hasCrm && (
           <Badge tone="info">Pro</Badge>
         )}
       </div>
