@@ -96,6 +96,9 @@ final class Plugin {
 		$registry = $this->container->get( ModuleRegistry::class );
 
 		$registry->add( new Modules\KnowledgeBase\KnowledgeModule() );
+		// Chat after Knowledge: it resolves RetrievalService and
+		// TokenEstimator out of the container, and both are bound there.
+		$registry->add( new Modules\Chat\ChatModule() );
 
 		/**
 		 * Register feature modules.

@@ -28,6 +28,7 @@ use Hiveclerk\Domain\Knowledge\ChunkRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\DocumentRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\EmbeddingRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
+use Hiveclerk\Domain\Knowledge\RetrievalServiceInterface;
 use Hiveclerk\Domain\Knowledge\VectorStoreInterface;
 use Hiveclerk\Modules\KnowledgeBase\Jobs\EmbedSourceJob;
 use Hiveclerk\Modules\KnowledgeBase\Services\EmbeddingService;
@@ -176,6 +177,11 @@ final class KnowledgeModule extends AbstractModule {
 				$c->get( DocumentRepositoryInterface::class ),
 				$c->get( KnowledgeSourceRepositoryInterface::class )
 			)
+		);
+
+		$container->singleton(
+			RetrievalServiceInterface::class,
+			static fn ( Container $c ): RetrievalServiceInterface => $c->get( RetrievalService::class )
 		);
 
 		$container->singleton(

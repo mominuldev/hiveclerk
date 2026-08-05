@@ -23,7 +23,7 @@ use Hiveclerk\Domain\Usage\UsageRepositoryInterface;
  * spend the customer's money without appearing in their cost report, and
  * the report would be wrong in the direction nobody notices.
  */
-final class AiService {
+final class AiService implements AiServiceInterface {
 
 	/**
 	 * How long a model list stays cached.

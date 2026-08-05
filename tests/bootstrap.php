@@ -23,6 +23,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /*
+ * WordPress's security salts. Fixed values, not random ones: several
+ * classes derive a key from these, and a test that wants to assert two
+ * calls produced the same signature needs them stable across the run.
+ * Every real install defines all three in wp-config.php.
+ */
+if ( ! defined( 'AUTH_KEY' ) ) {
+	define( 'AUTH_KEY', 'hiveclerk-test-auth-key' );
+	define( 'SECURE_AUTH_KEY', 'hiveclerk-test-secure-auth-key' );
+	define( 'AUTH_SALT', 'hiveclerk-test-auth-salt' );
+}
+
+/*
  * WordPress's time constants. Several classes use them in class-constant
  * expressions, which PHP evaluates on first access rather than at load —
  * so a unit test that only touches the arithmetic still needs them

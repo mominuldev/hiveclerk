@@ -149,6 +149,15 @@ Exit code `0` is streaming, `2` is not. The tool prints the environment report, 
 
 **This does not block Sprint 3.** Sprint 5 is where the streaming chat endpoint and the polling fallback are built, and the fallback is what makes a buffering host a degraded experience rather than a broken one. The matrix must be filled before Sprint 5 closes, and it is re-run as verification in Sprint 10 (sprint plan §12).
 
+> **Sprint 5 closed with the matrix still empty.** The endpoint and the
+> fallback were built and both were measured working on the same single
+> host — streamed replies with citations, and the polling path returning
+> its `202` in 59 ms and completing in 1.6 s. The transport decision is
+> unchanged and the fallback now exists, but **M2's "4 of 5 hosts"
+> criterion is unmet**, and one local nginx stack is still not evidence
+> about the five hosts that carry the risk. The runbook above is unchanged
+> and takes about ten minutes per host once there is access to one.
+
 ---
 
 ## 7. Residual risk

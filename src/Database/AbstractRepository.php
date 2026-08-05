@@ -244,7 +244,7 @@ abstract class AbstractRepository {
 	/**
 	 * Encode an array for a JSON column.
 	 *
-	 * @param array<string, mixed> $value Value.
+	 * @param array<array-key, mixed> $value Value.
 	 * @return string|null
 	 */
 	protected function encodeJson( array $value ): ?string {

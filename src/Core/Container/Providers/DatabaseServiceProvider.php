@@ -25,12 +25,16 @@ use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
 use Hiveclerk\Domain\Usage\UsageRepositoryInterface;
 use Hiveclerk\Database\Migrator;
 use Hiveclerk\Database\Repositories\AgentRepository;
+use Hiveclerk\Database\Repositories\CitationRepository;
 use Hiveclerk\Database\Repositories\ConversationRepository;
 use Hiveclerk\Database\Repositories\KnowledgeSourceRepository;
 use Hiveclerk\Database\Repositories\MessageRepository;
+use Hiveclerk\Database\Repositories\SessionRepository;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
+use Hiveclerk\Domain\Conversation\CitationRepositoryInterface;
 use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
 use Hiveclerk\Domain\Conversation\MessageRepositoryInterface;
+use Hiveclerk\Domain\Conversation\SessionRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
 
 /**
@@ -93,6 +97,16 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		$container->singleton(
 			MessageRepositoryInterface::class,
 			static fn (): MessageRepositoryInterface => new MessageRepository()
+		);
+
+		$container->singleton(
+			CitationRepositoryInterface::class,
+			static fn (): CitationRepositoryInterface => new CitationRepository()
+		);
+
+		$container->singleton(
+			SessionRepositoryInterface::class,
+			static fn (): SessionRepositoryInterface => new SessionRepository()
 		);
 
 		$container->singleton(

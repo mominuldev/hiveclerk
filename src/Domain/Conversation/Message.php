@@ -35,6 +35,7 @@ final class Message {
 	 * @param bool                   $isGrounded     Supported by a citation.
 	 * @param int|null               $rating         Visitor feedback, -1 or 1.
 	 * @param DateTimeImmutable|null $createdAt      Creation time, UTC.
+	 * @param array<int, string>     $guardrailFlags What the guardrails noticed.
 	 */
 	public function __construct(
 		public ?int $id,
@@ -52,6 +53,7 @@ final class Message {
 		public bool $isGrounded = false,
 		public ?int $rating = null,
 		public ?DateTimeImmutable $createdAt = null,
+		public array $guardrailFlags = array(),
 	) {
 	}
 

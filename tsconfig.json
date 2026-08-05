@@ -28,6 +28,6 @@
             "@/*": ["admin-app/src/*"]
         }
     },
-    "include": ["admin-app/src", "public-widget/src", "vite.config.ts"],
+    "include": ["admin-app/src", "public-widget/src", "vite.config.ts", "vite.widget.config.ts"],
     "exclude": ["node_modules", "assets", "vendor"]
 }

@@ -86,6 +86,7 @@ final class MessageRepository extends AbstractRepository implements MessageRepos
 			'latency_ms'      => $message->latencyMs,
 			'retrieval_score' => $message->retrievalScore,
 			'is_grounded'     => $message->isGrounded ? 1 : 0,
+			'guardrail_flags' => $this->encodeJson( $message->guardrailFlags ),
 			'created_at'      => $this->now(),
 		);
 
@@ -141,6 +142,12 @@ final class MessageRepository extends AbstractRepository implements MessageRepos
 			isGrounded: (bool) ( $row['is_grounded'] ?? false ),
 			rating: isset( $row['rating'] ) ? (int) $row['rating'] : null,
 			createdAt: $createdAt,
+			guardrailFlags: array_values(
+				array_filter(
+					$this->json( $row['guardrail_flags'] ?? null ),
+					static fn ( $flag ): bool => is_string( $flag )
+				)
+			),
 		);
 	}
 }

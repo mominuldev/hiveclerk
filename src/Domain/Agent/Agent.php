@@ -36,6 +36,8 @@ final class Agent {
 	 * @param array<string, mixed>  $guardrails      Limits the clerk must respect.
 	 * @param int|null              $tokenBudget     Monthly cap, null for unlimited.
 	 * @param int                   $tokensUsedMonth Consumed this period.
+	 * @param string|null           $avatarUrl       Face shown in the widget.
+	 * @param array<string, mixed>  $widgetConfig    Position, accent, radius, theme.
 	 */
 	public function __construct(
 		public ?int $id,
@@ -51,6 +53,8 @@ final class Agent {
 		public array $guardrails = array(),
 		public ?int $tokenBudget = null,
 		public int $tokensUsedMonth = 0,
+		public ?string $avatarUrl = null,
+		public array $widgetConfig = array(),
 	) {
 	}
 
@@ -115,5 +119,122 @@ final class Agent {
 		$value = $this->guardrails['confidence_threshold'] ?? 0.62;
 
 		return is_numeric( $value ) ? (float) $value : 0.62;
+	}
+
+	/**
+	 * Provider this clerk is configured to use.
+	 *
+	 * @return string|null
+	 */
+	public function provider(): ?string {
+		$value = $this->modelConfig['provider'] ?? null;
+
+		return is_string( $value ) && '' !== $value ? $value : null;
+	}
+
+	/**
+	 * Model this clerk is configured to use.
+	 *
+	 * @return string|null
+	 */
+	public function model(): ?string {
+		$value = $this->modelConfig['model'] ?? null;
+
+		return is_string( $value ) && '' !== $value ? $value : null;
+	}
+
+	/**
+	 * Sampling temperature, clamped to a range every provider accepts.
+	 *
+	 * Defaults low. A support clerk quoting a returns policy is not a
+	 * creative writing task, and the cost of an invented detail is a
+	 * customer acting on it.
+	 *
+	 * @return float
+	 */
+	public function temperature(): float {
+		$value = $this->modelConfig['temperature'] ?? 0.3;
+
+		return is_numeric( $value ) ? max( 0.0, min( 1.0, (float) $value ) ) : 0.3;
+	}
+
+	/**
+	 * Output ceiling for one reply.
+	 *
+	 * @return int
+	 */
+	public function maxTokens(): int {
+		$value = $this->modelConfig['max_tokens'] ?? 800;
+
+		return is_numeric( $value ) ? max( 64, min( 4096, (int) $value ) ) : 800;
+	}
+
+	/**
+	 * How many prior turns are replayed into the prompt.
+	 *
+	 * Bounded, and bounded low. Every turn carried forward is billed again
+	 * on every subsequent message, so an unbounded history turns a long
+	 * conversation into a quadratic bill.
+	 *
+	 * @return int
+	 */
+	public function historyTurns(): int {
+		$value = $this->modelConfig['history_turns'] ?? 8;
+
+		return is_numeric( $value ) ? max( 0, min( 30, (int) $value ) ) : 8;
+	}
+
+	/**
+	 * How many chunks retrieval hands to the prompt.
+	 *
+	 * @return int
+	 */
+	public function topK(): int {
+		$value = $this->guardrails['top_k'] ?? 5;
+
+		return is_numeric( $value ) ? max( 1, min( 12, (int) $value ) ) : 5;
+	}
+
+	/**
+	 * Topics this clerk must refuse to discuss.
+	 *
+	 * @return array<int, string>
+	 */
+	public function bannedTopics(): array {
+		$value = $this->guardrails['banned_topics'] ?? array();
+
+		if ( ! is_array( $value ) ) {
+			return array();
+		}
+
+		$topics = array();
+
+		foreach ( $value as $topic ) {
+			if ( is_string( $topic ) && '' !== trim( $topic ) ) {
+				$topics[] = trim( $topic );
+			}
+		}
+
+		return $topics;
+	}
+
+	/**
+	 * What the visitor sees when the clerk cannot or will not answer.
+	 *
+	 * Never an error. A visitor who hits a token budget did nothing wrong
+	 * and has no way to act on the reason, so the message they get is the
+	 * one the owner wrote for the case where the clerk falls short.
+	 *
+	 * @return string
+	 */
+	public function fallbackText(): string {
+		$configured = trim( (string) $this->fallbackMessage );
+
+		if ( '' !== $configured ) {
+			return $configured;
+		}
+
+		return "I don't have that in what I've been given to read. "
+			. 'If you leave your email, someone here will follow it up.';
 	}
 }

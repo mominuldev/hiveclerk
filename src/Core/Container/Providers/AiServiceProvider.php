@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace Hiveclerk\Core\Container\Providers;
 
 use Hiveclerk\Ai\AiService;
+use Hiveclerk\Ai\AiServiceInterface;
 use Hiveclerk\Ai\Http\HttpClientInterface;
 use Hiveclerk\Ai\KeyResolver;
 use Hiveclerk\Ai\PricingTable;
@@ -92,6 +93,15 @@ final class AiServiceProvider extends ServiceProvider {
 				$c->get( UsageRepositoryInterface::class ),
 				$c->get( PricingTable::class )
 			)
+		);
+
+		// The port resolves to the same instance, not a second one. Metering
+		// lives inside AiService, and two instances would be two independent
+		// paths to a provider — only one of which anything else could stub
+		// out in a test or replace with a gateway in the hosted product.
+		$container->singleton(
+			AiServiceInterface::class,
+			static fn ( Container $c ): AiServiceInterface => $c->get( AiService::class )
 		);
 	}
 }

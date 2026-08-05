@@ -85,6 +85,28 @@ interface AgentRepositoryInterface {
 	public function delete( int $id ): bool;
 
 	/**
+	 * Knowledge sources this clerk may read, highest priority first.
+	 *
+	 * A clerk with no sources is not an error and must not be treated as
+	 * one: it answers from its instructions alone, which is a legitimate
+	 * configuration for a clerk whose whole job is qualification.
+	 *
+	 * @param int $agentId Storage id.
+	 * @return array<int, int>
+	 */
+	public function sourceIds( int $agentId ): array;
+
+	/**
+	 * Give a clerk access to a knowledge source.
+	 *
+	 * @param int $agentId  Storage id.
+	 * @param int $sourceId Knowledge source id.
+	 * @param int $priority Higher sorts first.
+	 * @return void
+	 */
+	public function attachSource( int $agentId, int $sourceId, int $priority = 0 ): void;
+
+	/**
 	 * Add to the month's token usage.
 	 *
 	 * Done in SQL rather than read-modify-write: two concurrent

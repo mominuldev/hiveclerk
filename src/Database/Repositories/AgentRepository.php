@@ -102,8 +102,10 @@ final class AgentRepository extends AbstractRepository implements AgentRepositor
 			'greeting'          => $agent->greeting,
 			'fallback_message'  => $agent->fallbackMessage,
 			'instructions'      => $agent->instructions,
+			'avatar_url'        => $agent->avatarUrl,
 			'model_config'      => $this->encodeJson( $agent->modelConfig ),
 			'guardrails'        => $this->encodeJson( $agent->guardrails ),
+			'widget_config'     => $this->encodeJson( $agent->widgetConfig ),
 			'token_budget'      => $agent->tokenBudget,
 			'tokens_used_month' => $agent->tokensUsedMonth,
 			'updated_at'        => $this->now(),
@@ -130,6 +132,36 @@ final class AgentRepository extends AbstractRepository implements AgentRepositor
 
 	public function delete( int $id ): bool {
 		return $this->updateRow( $id, array( 'deleted_at' => $this->now() ) );
+	}
+
+	public function sourceIds( int $agentId ): array {
+		$table = Schema::table( Schema::AGENT_SOURCES );
+
+		$prepared = $this->db->prepare(
+			"SELECT source_id FROM `{$table}` WHERE agent_id = %d ORDER BY priority DESC, id ASC",
+			$agentId
+		);
+
+		if ( ! is_string( $prepared ) ) {
+			return array();
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$ids = $this->db->get_col( $prepared );
+
+		return is_array( $ids ) ? array_values( array_map( 'intval', $ids ) ) : array();
+	}
+
+	public function attachSource( int $agentId, int $sourceId, int $priority = 0 ): void {
+		$table = Schema::table( Schema::AGENT_SOURCES );
+
+		// INSERT IGNORE against the unique key rather than select-then-insert:
+		// two operators attaching the same source at once would otherwise
+		// race through the gap between the two statements.
+		$this->execute(
+			"INSERT IGNORE INTO `{$table}` (agent_id, source_id, priority, created_at) VALUES (%d, %d, %d, %s)",
+			array( $agentId, $sourceId, $priority, $this->now() )
+		);
 	}
 
 	public function incrementUsage( int $id, int $tokens ): void {
@@ -165,6 +197,8 @@ final class AgentRepository extends AbstractRepository implements AgentRepositor
 			guardrails: $this->json( $row['guardrails'] ?? null ),
 			tokenBudget: isset( $row['token_budget'] ) ? (int) $row['token_budget'] : null,
 			tokensUsedMonth: (int) ( $row['tokens_used_month'] ?? 0 ),
+			avatarUrl: isset( $row['avatar_url'] ) ? (string) $row['avatar_url'] : null,
+			widgetConfig: $this->json( $row['widget_config'] ?? null ),
 		);
 	}
 }

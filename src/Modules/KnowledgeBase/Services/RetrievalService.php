@@ -18,6 +18,7 @@ use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\RetrievalDiagnostics;
 use Hiveclerk\Domain\Knowledge\RetrievalOptions;
 use Hiveclerk\Domain\Knowledge\RetrievalResult;
+use Hiveclerk\Domain\Knowledge\RetrievalServiceInterface;
 use Hiveclerk\Domain\Knowledge\RetrievedChunk;
 use Hiveclerk\Domain\Knowledge\ScoredChunk;
 use Hiveclerk\Domain\Knowledge\VectorStoreInterface;
@@ -55,7 +56,7 @@ use Hiveclerk\Modules\KnowledgeBase\Vector\ReciprocalRankFusion;
  * threshold gates. The knowledge-gaps report depends on this being right:
  * its whole purpose is spotting questions where the best match was weak.
  */
-final class RetrievalService {
+final class RetrievalService implements RetrievalServiceInterface {
 
 	/**
 	 * Keyword results fetched for fusion.
