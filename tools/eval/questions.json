@@ -1,0 +1,326 @@
+[
+    {
+        "question": "How long until my parcel turns up?",
+        "document_ids": [
+            12
+        ]
+    },
+    {
+        "question": "Can I get it by tomorrow if I order now?",
+        "document_ids": [
+            12
+        ]
+    },
+    {
+        "question": "What do you charge to send something to Dublin?",
+        "document_ids": [
+            12
+        ]
+    },
+    {
+        "question": "Do you send stuff to America?",
+        "document_ids": [
+            12
+        ]
+    },
+    {
+        "question": "How much do I need to spend to stop paying postage?",
+        "document_ids": [
+            12
+        ]
+    },
+    {
+        "question": "What is the cut-off for it going out the same day?",
+        "document_ids": [
+            12
+        ]
+    },
+    {
+        "question": "Nobody was in when the driver came. What happens now?",
+        "document_ids": [
+            12
+        ]
+    },
+    {
+        "question": "Can I send it back if I just don't like it?",
+        "document_ids": [
+            13
+        ]
+    },
+    {
+        "question": "How long before the money is back on my card?",
+        "document_ids": [
+            13
+        ]
+    },
+    {
+        "question": "Do I have to pay to post it back to you?",
+        "document_ids": [
+            13
+        ]
+    },
+    {
+        "question": "Can I just swap it for a bigger one?",
+        "document_ids": [
+            13
+        ]
+    },
+    {
+        "question": "I bought earrings. Can those go back?",
+        "document_ids": [
+            13
+        ]
+    },
+    {
+        "question": "Is the window shorter on reduced stuff?",
+        "document_ids": [
+            13
+        ]
+    },
+    {
+        "question": "How long is the guarantee?",
+        "document_ids": [
+            14
+        ]
+    },
+    {
+        "question": "A zip went after three years. What will that cost me?",
+        "document_ids": [
+            14
+        ]
+    },
+    {
+        "question": "My jumper has gone thin at the elbows. Is that covered?",
+        "document_ids": [
+            14
+        ]
+    },
+    {
+        "question": "How long do fixes take in December?",
+        "document_ids": [
+            14
+        ]
+    },
+    {
+        "question": "I'm between two sizes for a coat. Which do I pick?",
+        "document_ids": [
+            15
+        ]
+    },
+    {
+        "question": "Do your shoes come up small?",
+        "document_ids": [
+            15
+        ]
+    },
+    {
+        "question": "What chest does a men's medium fit?",
+        "document_ids": [
+            15
+        ]
+    },
+    {
+        "question": "Do you do anything for wide feet?",
+        "document_ids": [
+            15
+        ]
+    },
+    {
+        "question": "Can I spread the cost over a few payments?",
+        "document_ids": [
+            16
+        ]
+    },
+    {
+        "question": "When does the money actually leave my account?",
+        "document_ids": [
+            16
+        ]
+    },
+    {
+        "question": "Will I get stung for customs charges?",
+        "document_ids": [
+            16
+        ]
+    },
+    {
+        "question": "How long does a voucher stay valid?",
+        "document_ids": [
+            16
+        ]
+    },
+    {
+        "question": "Can I use two codes at once?",
+        "document_ids": [
+            16
+        ]
+    },
+    {
+        "question": "I can't remember my login details.",
+        "document_ids": [
+            17
+        ]
+    },
+    {
+        "question": "Can I stop an order I placed five minutes ago?",
+        "document_ids": [
+            17
+        ]
+    },
+    {
+        "question": "Do I have to sign up to buy something?",
+        "document_ids": [
+            17
+        ]
+    },
+    {
+        "question": "How long do you hang on to my information?",
+        "document_ids": [
+            17
+        ]
+    },
+    {
+        "question": "What time do you shut on a Sunday?",
+        "document_ids": [
+            18
+        ]
+    },
+    {
+        "question": "Can I ring you at the weekend?",
+        "document_ids": [
+            18
+        ]
+    },
+    {
+        "question": "Can I drop a return at the depot instead of posting it?",
+        "document_ids": [
+            18
+        ]
+    },
+    {
+        "question": "Are you open late in the run-up to Christmas?",
+        "document_ids": [
+            18
+        ]
+    },
+    {
+        "question": "What temperature should I wash a cotton tee at?",
+        "document_ids": [
+            19
+        ]
+    },
+    {
+        "question": "Can any of this go in the dryer?",
+        "document_ids": [
+            19
+        ]
+    },
+    {
+        "question": "How do I look after a waxed jacket?",
+        "document_ids": [
+            19
+        ]
+    },
+    {
+        "question": "My boots got soaked through. How do I dry them?",
+        "document_ids": [
+            19
+        ]
+    },
+    {
+        "question": "The size I want is greyed out. Will it come back?",
+        "document_ids": [
+            20
+        ]
+    },
+    {
+        "question": "What if two people buy the last one at the same time?",
+        "document_ids": [
+            20
+        ]
+    },
+    {
+        "question": "If I reserve something in advance, when am I charged?",
+        "document_ids": [
+            20
+        ]
+    },
+    {
+        "question": "Is what's on the site the same as what's in town?",
+        "document_ids": [
+            20
+        ]
+    },
+    {
+        "question": "What's the smallest first order for a shop?",
+        "document_ids": [
+            21
+        ]
+    },
+    {
+        "question": "Do you supply people selling on marketplaces?",
+        "document_ids": [
+            21
+        ]
+    },
+    {
+        "question": "When are the buying deadlines each season?",
+        "document_ids": [
+            21
+        ]
+    },
+    {
+        "question": "What margin does a stockist make?",
+        "document_ids": [
+            21
+        ]
+    },
+    {
+        "question": "Is your cotton organic?",
+        "document_ids": [
+            22
+        ]
+    },
+    {
+        "question": "Do you buy carbon offsets?",
+        "document_ids": [
+            22
+        ]
+    },
+    {
+        "question": "Is there any plastic in the packaging?",
+        "document_ids": [
+            22
+        ]
+    },
+    {
+        "question": "Where does your wool come from?",
+        "document_ids": [
+            22
+        ]
+    },
+    {
+        "question": "Can you hide what I paid, it's a present?",
+        "document_ids": [
+            23
+        ]
+    },
+    {
+        "question": "How much extra to have it wrapped?",
+        "document_ids": [
+            23
+        ]
+    },
+    {
+        "question": "Can they send it back without me finding out?",
+        "document_ids": [
+            23
+        ]
+    },
+    {
+        "question": "How quickly does an e-voucher come through?",
+        "document_ids": [
+            23
+        ]
+    }
+]

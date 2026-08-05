@@ -6,6 +6,107 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### M1 measured at last — and its recall criterion fails
+
+**Goal:** close the oldest open question in the project. The M1 recall gate
+has been unproven since Sprint 4, for two reasons that were recorded
+honestly and never resolved: the development site had no embedding-capable
+provider key, and the 200-question evaluation set the sprint plan named
+"does not exist as a curated artefact". Both are now fixed, and the answer
+is not the one anybody wanted.
+
+#### The result
+
+| M1 criterion | Budget | Measured | |
+|---|---|---|---|
+| Retrieval latency p95 at 10k chunks | ≤ 300 ms | **34.6 ms** | ✅ |
+| Peak memory | ≤ 96 MB | **89.4 MB** | ✅ |
+| Quantisation recall@5 (synthetic) | ≥ 0.90 | **1.000** | ✅ |
+| **End-to-end recall@5 (real questions)** | **≥ 0.90** | **0.815** | ❌ |
+
+The two budgets that were always going to be about our own code pass with
+room to spare — the latency figure has eight times the headroom the budget
+allows. The one that depends on an embedding model meeting a real visitor's
+phrasing does not.
+
+#### The keyword fusion is costing more recall than it earns
+
+Run both ways over the same 54 questions:
+
+| Configuration | recall@5 | MRR |
+|---|---|---|
+| Fused vector + FULLTEXT (what ships) | **0.815** (44/54) | 0.698 |
+| Vector only | **0.870** (47/54) | 0.615 |
+
+Of the ten questions the shipping configuration missed, vector-only alone
+recovers **six**. The trade is legible in the rankings: fusion improves the
+*ordering* of what it finds (MRR up 0.083) and loses whole answers doing it
+(recall down 0.055).
+
+The mechanism is RRF treating a weak semantic match and a strong one as
+interchangeable once keyword agrees. "What margin does a stockist make?"
+retrieves the right page **first, at cosine 0.81**, with vector search
+alone; fusion promotes three chunks of our own monetisation deliverable at
+cosine 0.69–0.70 and pushes the answer out of the top five entirely. Long
+technical documents are full of common words and BM25 rewards them, so the
+chunks that win on keyword are systematically the ones that deserve it
+least.
+
+**This has not been fixed, deliberately.** The obvious repairs — weighting
+the vector arm, or refusing keyword candidates below a vector floor — would
+be tuned against a 54-question set written in the same sitting, and a
+retrieval change validated only on the data it was tuned to is a number
+that looks better without the product being better. It wants a question set
+somebody else wrote.
+
+#### Added
+
+- **`tools/eval/seed-corpus.php`** — twelve pages of realistic business
+  prose (delivery, returns, warranty, sizing, payment, accounts, care,
+  stock, wholesale, sustainability, gifting), the kind of content the
+  product is actually sold to answer from.
+- **`tools/eval/questions.source.json`** — 54 questions written the way a
+  visitor types them and deliberately *away* from the vocabulary of the page
+  that answers them. The page says "three to five working days"; the
+  question asks "how long until my parcel turns up". A question that reuses
+  the page's words measures string matching and reports it as semantic
+  retrieval.
+- **`tools/eval/build-questions.php`** — resolves page titles to document
+  ids at run time. Document ids change on every re-index, and a question
+  file full of stale integers fails as a *recall miss* rather than as an
+  error, which is the worst failure mode a measurement tool can have.
+
+#### Verified
+
+Google `gemini-embedding-001`, 21 sources, 158 chunks, 54 questions.
+Retrieval cost of a full run: 54 embedding calls, roughly $0.0002.
+
+- End-to-end latency p95 1,476 ms, **of which 894 ms is the provider's
+  embedding call**. Our own share is the 34.6 ms the synthetic benchmark
+  isolates; the round trip to Google is four fifths of what a visitor waits
+  for, and no amount of local optimisation touches it.
+- 100% of questions produced a match above the 0.62 confidence floor —
+  the guardrail is not what is losing the misses, the ranking is.
+
+#### Known gaps
+
+- **The corpus and the question set were written by the same hand**, which
+  is weaker than a real customer's site and a stranger's question. The
+  questions were phrased away from the source text to blunt it; the figure
+  should be read as better than a probe run and worse than a measurement
+  against a real shop.
+- **158 chunks is a small corpus.** Top-5 of 158 is about 3%, so the task is
+  real, but recall on a 10,000-chunk corpus is a harder problem than this
+  measures and the number would be expected to fall.
+- **Fifty-four questions, not the two hundred** the sprint plan named. The
+  set is a genuine artefact now rather than an absence, and it is a quarter
+  of the size that was asked for.
+- **The `uniform` synthetic corpus exceeds the memory budget at 10k**
+  (98.5 MB against 96 MB) and drops to 0.80 quantisation recall. The
+  benchmark does not count either against M1 because uniformly-random
+  vectors have no topical structure and no real corpus looks like that —
+  but it is the honest worst case and it is recorded rather than hidden.
+
 ### Sprint 10 (continued) — security review, the licence server, SSRF
 
 **Goal:** close the three Sprint 10 line items that could be closed without

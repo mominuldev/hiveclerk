@@ -1,0 +1,82 @@
+{
+  "_comment": [
+    "The curated question set the sprint plan named and that has never existed.",
+    "",
+    "Each question is written the way a visitor would type it, deliberately",
+    "avoiding the vocabulary of the page that answers it: the page says",
+    "'three to five working days', the question asks 'how long until my parcel",
+    "turns up'. A question that reuses the page's words measures string",
+    "matching and reports it as semantic retrieval.",
+    "",
+    "'page' is resolved to a document id by tools/eval/build-questions.php,",
+    "because document ids change every time the corpus is re-indexed and a",
+    "question file full of stale integers fails silently as a recall miss."
+  ],
+  "questions": [
+    { "q": "How long until my parcel turns up?", "page": "Delivery and shipping" },
+    { "q": "Can I get it by tomorrow if I order now?", "page": "Delivery and shipping" },
+    { "q": "What do you charge to send something to Dublin?", "page": "Delivery and shipping" },
+    { "q": "Do you send stuff to America?", "page": "Delivery and shipping" },
+    { "q": "How much do I need to spend to stop paying postage?", "page": "Delivery and shipping" },
+    { "q": "What is the cut-off for it going out the same day?", "page": "Delivery and shipping" },
+    { "q": "Nobody was in when the driver came. What happens now?", "page": "Delivery and shipping" },
+
+    { "q": "Can I send it back if I just don't like it?", "page": "Returns and refunds" },
+    { "q": "How long before the money is back on my card?", "page": "Returns and refunds" },
+    { "q": "Do I have to pay to post it back to you?", "page": "Returns and refunds" },
+    { "q": "Can I just swap it for a bigger one?", "page": "Returns and refunds" },
+    { "q": "I bought earrings. Can those go back?", "page": "Returns and refunds" },
+    { "q": "Is the window shorter on reduced stuff?", "page": "Returns and refunds" },
+
+    { "q": "How long is the guarantee?", "page": "Warranty and repairs" },
+    { "q": "A zip went after three years. What will that cost me?", "page": "Warranty and repairs" },
+    { "q": "My jumper has gone thin at the elbows. Is that covered?", "page": "Warranty and repairs" },
+    { "q": "How long do fixes take in December?", "page": "Warranty and repairs" },
+
+    { "q": "I'm between two sizes for a coat. Which do I pick?", "page": "Sizing and fit" },
+    { "q": "Do your shoes come up small?", "page": "Sizing and fit" },
+    { "q": "What chest does a men's medium fit?", "page": "Sizing and fit" },
+    { "q": "Do you do anything for wide feet?", "page": "Sizing and fit" },
+
+    { "q": "Can I spread the cost over a few payments?", "page": "Payment and pricing" },
+    { "q": "When does the money actually leave my account?", "page": "Payment and pricing" },
+    { "q": "Will I get stung for customs charges?", "page": "Payment and pricing" },
+    { "q": "How long does a voucher stay valid?", "page": "Payment and pricing" },
+    { "q": "Can I use two codes at once?", "page": "Payment and pricing" },
+
+    { "q": "I can't remember my login details.", "page": "Accounts and orders" },
+    { "q": "Can I stop an order I placed five minutes ago?", "page": "Accounts and orders" },
+    { "q": "Do I have to sign up to buy something?", "page": "Accounts and orders" },
+    { "q": "How long do you hang on to my information?", "page": "Accounts and orders" },
+
+    { "q": "What time do you shut on a Sunday?", "page": "Opening hours and contact" },
+    { "q": "Can I ring you at the weekend?", "page": "Opening hours and contact" },
+    { "q": "Can I drop a return at the depot instead of posting it?", "page": "Opening hours and contact" },
+    { "q": "Are you open late in the run-up to Christmas?", "page": "Opening hours and contact" },
+
+    { "q": "What temperature should I wash a cotton tee at?", "page": "Product care" },
+    { "q": "Can any of this go in the dryer?", "page": "Product care" },
+    { "q": "How do I look after a waxed jacket?", "page": "Product care" },
+    { "q": "My boots got soaked through. How do I dry them?", "page": "Product care" },
+
+    { "q": "The size I want is greyed out. Will it come back?", "page": "Stock and availability" },
+    { "q": "What if two people buy the last one at the same time?", "page": "Stock and availability" },
+    { "q": "If I reserve something in advance, when am I charged?", "page": "Stock and availability" },
+    { "q": "Is what's on the site the same as what's in town?", "page": "Stock and availability" },
+
+    { "q": "What's the smallest first order for a shop?", "page": "Wholesale and trade" },
+    { "q": "Do you supply people selling on marketplaces?", "page": "Wholesale and trade" },
+    { "q": "When are the buying deadlines each season?", "page": "Wholesale and trade" },
+    { "q": "What margin does a stockist make?", "page": "Wholesale and trade" },
+
+    { "q": "Is your cotton organic?", "page": "Sustainability and materials" },
+    { "q": "Do you buy carbon offsets?", "page": "Sustainability and materials" },
+    { "q": "Is there any plastic in the packaging?", "page": "Sustainability and materials" },
+    { "q": "Where does your wool come from?", "page": "Sustainability and materials" },
+
+    { "q": "Can you hide what I paid, it's a present?", "page": "Gift wrapping and gift cards" },
+    { "q": "How much extra to have it wrapped?", "page": "Gift wrapping and gift cards" },
+    { "q": "Can they send it back without me finding out?", "page": "Gift wrapping and gift cards" },
+    { "q": "How quickly does an e-voucher come through?", "page": "Gift wrapping and gift cards" }
+  ]
+}
