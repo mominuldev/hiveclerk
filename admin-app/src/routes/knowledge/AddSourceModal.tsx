@@ -8,6 +8,7 @@ import {
   useSourceTypes,
   type SourceTypeOption,
 } from '@/api/queries/useKnowledge';
+import { FaqPairsEditor, emptyPair, type FaqPair } from './FaqPairsEditor';
 
 interface AddSourceModalProps {
   open: boolean;
@@ -36,6 +37,11 @@ export function AddSourceModal({ open, onClose }: AddSourceModalProps) {
   const [url, setUrl] = useState('');
   const [maxPages, setMaxPages] = useState('100');
   const [text, setText] = useState('');
+  const [pairs, setPairs] = useState<FaqPair[]>([emptyPair()]);
+
+  const completePairs = pairs.filter(
+    (pair) => pair.question.trim() !== '' && pair.answer.trim() !== ''
+  );
 
   const selected = useMemo(
     () => types?.find((option) => option.value === type),
@@ -48,6 +54,7 @@ export function AddSourceModal({ open, onClose }: AddSourceModalProps) {
     setUrl('');
     setMaxPages('100');
     setText('');
+    setPairs([emptyPair()]);
   };
 
   const config = (): Record<string, unknown> => {
@@ -60,6 +67,11 @@ export function AddSourceModal({ open, onClose }: AddSourceModalProps) {
         };
       case 'text':
         return { content: text };
+      case 'faq':
+        // Only the complete pairs are sent. The extractor drops half-written
+        // ones anyway, and storing them would mean a source whose pair count
+        // never matches what it indexes.
+        return { pairs: completePairs };
       case 'wp_content':
         return { post_types: ['post', 'page'] };
       default:
@@ -71,6 +83,7 @@ export function AddSourceModal({ open, onClose }: AddSourceModalProps) {
     if (selected && !selected.available) return false;
     if (type === 'website_crawl') return url.trim().startsWith('http');
     if (type === 'text') return text.trim().length > 0;
+    if (type === 'faq') return completePairs.length > 0;
     return true;
   };
 
@@ -218,6 +231,8 @@ export function AddSourceModal({ open, onClose }: AddSourceModalProps) {
             )}
           </Field>
         )}
+
+        {type === 'faq' && <FaqPairsEditor pairs={pairs} onChange={setPairs} />}
 
         {type === 'wp_content' && (
           <p className="rounded-lg border border-border bg-surface-sunken px-3 py-2 text-xs leading-relaxed text-content-secondary">

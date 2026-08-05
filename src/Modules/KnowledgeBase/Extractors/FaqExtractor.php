@@ -184,10 +184,28 @@ final class FaqExtractor extends AbstractExtractor {
 				continue;
 			}
 
+			$url = self::cell( $row, $header['url'] );
+
+			/*
+			 * A headerless file gets its third column read as the citation,
+			 * but only when it looks like one. Two-column exports are the
+			 * common case and a third column there could be anything —
+			 * a category, an author, an internal ticket id — and promoting
+			 * that to a citation would put a broken link under an answer,
+			 * which reads as a product bug rather than as a bad import.
+			 */
+			if ( '' === $url && null === $header['url'] ) {
+				$candidate = self::cell( $row, 2 );
+
+				if ( str_starts_with( $candidate, 'http://' ) || str_starts_with( $candidate, 'https://' ) ) {
+					$url = $candidate;
+				}
+			}
+
 			$pairs[] = array(
 				'question' => $question,
 				'answer'   => $answer,
-				'url'      => self::cell( $row, $header['url'] ),
+				'url'      => $url,
 			);
 		}
 
@@ -219,10 +237,28 @@ final class FaqExtractor extends AbstractExtractor {
 			return null;
 		}
 
+		/*
+		 * The citation column, under any of the names people actually give
+		 * it. Only `url` was recognised before, so a file headed
+		 * "Question, Answer, Source" — which is what the export from most
+		 * help desks looks like — imported every pair with no citation and
+		 * reported complete success. The answers were right and the "where
+		 * did this come from" link was silently absent on all of them.
+		 */
+		$citation = null;
+
+		foreach ( array( 'url', 'source', 'source url', 'source_url', 'link', 'page' ) as $alias ) {
+			if ( isset( $map[ $alias ] ) ) {
+				$citation = (int) $map[ $alias ];
+
+				break;
+			}
+		}
+
 		return array(
 			'question' => (int) $question,
 			'answer'   => (int) $answer,
-			'url'      => isset( $map['url'] ) ? (int) $map['url'] : null,
+			'url'      => $citation,
 		);
 	}
 
