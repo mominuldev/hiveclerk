@@ -12,6 +12,8 @@ namespace Hiveclerk\Core\Container\Providers;
 use Hiveclerk\Ai\AiService;
 use Hiveclerk\Ai\KeyResolver;
 use Hiveclerk\Api\Controllers\AuditController;
+use Hiveclerk\Api\Controllers\BrandingController;
+use Hiveclerk\Api\Controllers\LicenceController;
 use Hiveclerk\Api\Controllers\ProvidersController;
 use Hiveclerk\Api\Controllers\StreamController;
 use Hiveclerk\Api\Controllers\SystemController;
@@ -19,6 +21,12 @@ use Hiveclerk\Api\Controllers\UsageController;
 use Hiveclerk\Api\Streaming\SseStream;
 use Hiveclerk\Api\Streaming\StreamEnvironment;
 use Hiveclerk\Core\Audit\AuditLogger;
+use Hiveclerk\Core\Branding\BrandingService;
+use Hiveclerk\Core\Licence\LicenceChunkQuota;
+use Hiveclerk\Core\Licence\LicenceClient;
+use Hiveclerk\Core\Licence\LicenceGate;
+use Hiveclerk\Core\Licence\LicenceService;
+use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
 use Hiveclerk\Domain\Usage\UsageRepositoryInterface;
@@ -32,6 +40,7 @@ use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Database\Migrator;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
+use Hiveclerk\Domain\Knowledge\ChunkQuotaInterface;
 use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
 
 /**
@@ -56,6 +65,63 @@ final class ApiServiceProvider extends ServiceProvider {
 			static fn ( Container $c ): RateLimiter => new RateLimiter(
 				$c->get( ClockInterface::class ),
 				$c->get( RateLimitStoreInterface::class )
+			)
+		);
+
+		$container->singleton(
+			LicenceClient::class,
+			static fn (): LicenceClient => new LicenceClient()
+		);
+
+		$container->singleton(
+			LicenceService::class,
+			static fn ( Container $c ): LicenceService => new LicenceService(
+				$c->get( LicenceClient::class ),
+				$c->get( Encryptor::class ),
+				$c->get( AuditLogger::class ),
+				$c->get( ClockInterface::class )
+			)
+		);
+
+		$container->singleton(
+			LicenceGate::class,
+			static fn ( Container $c ): LicenceGate => new LicenceGate(
+				$c->get( LicenceService::class )
+			)
+		);
+
+		// Replaces the core provider's null object now that there is a
+		// licence to ask.
+		$container->singleton(
+			ChunkQuotaInterface::class,
+			static fn ( Container $c ): ChunkQuotaInterface => new LicenceChunkQuota(
+				$c->get( LicenceGate::class )
+			)
+		);
+
+		$container->singleton(
+			BrandingService::class,
+			static fn ( Container $c ): BrandingService => new BrandingService(
+				$c->get( SettingsRepository::class ),
+				$c->get( LicenceGate::class )
+			)
+		);
+
+		$container->singleton(
+			LicenceController::class,
+			static fn ( Container $c ): LicenceController => new LicenceController(
+				$c->get( LicenceService::class ),
+				$c->get( RateLimiter::class ),
+				$c->get( ClockInterface::class )
+			)
+		);
+
+		$container->singleton(
+			BrandingController::class,
+			static fn ( Container $c ): BrandingController => new BrandingController(
+				$c->get( BrandingService::class ),
+				$c->get( LicenceGate::class ),
+				$c->get( AuditLogger::class )
 			)
 		);
 
@@ -128,6 +194,8 @@ final class ApiServiceProvider extends ServiceProvider {
 				$server->add( $c->get( ProvidersController::class ) );
 				$server->add( $c->get( AuditController::class ) );
 				$server->add( $c->get( UsageController::class ) );
+				$server->add( $c->get( LicenceController::class ) );
+				$server->add( $c->get( BrandingController::class ) );
 
 				return $server;
 			}

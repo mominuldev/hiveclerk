@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Modules\Leads\Services;
 
+use Hiveclerk\Core\Support\Csv;
 use Hiveclerk\Domain\Lead\Lead;
 use Hiveclerk\Domain\Lead\LeadRepositoryInterface;
 use Hiveclerk\Domain\Lead\LeadStage;
@@ -69,7 +70,7 @@ final class LeadExporter {
 		$total   = $this->leads->count( $filters );
 		$stages  = $this->stageNames();
 		$columns = $this->columns( $questions );
-		$lines   = array( $this->line( $columns ) );
+		$lines   = array( Csv::line( $columns ) );
 		$offset  = 0;
 		$rows    = 0;
 
@@ -81,7 +82,7 @@ final class LeadExporter {
 			}
 
 			foreach ( $batch as $lead ) {
-				$lines[] = $this->line( $this->row( $lead, $stages, $questions ) );
+				$lines[] = Csv::line( $this->row( $lead, $stages, $questions ) );
 
 				++$rows;
 			}
@@ -186,45 +187,6 @@ final class LeadExporter {
 		}
 
 		return $names;
-	}
-
-	/**
-	 * One CSV line.
-	 *
-	 * @param array<int, string> $values Cell values.
-	 * @return string
-	 */
-	private function line( array $values ): string {
-		return implode( ',', array_map( array( $this, 'cell' ), $values ) );
-	}
-
-	/**
-	 * One quoted CSV cell.
-	 *
-	 * ## Formula injection
-	 *
-	 * A cell starting `=`, `+`, `-` or `@` is executed as a formula when
-	 * the file is opened in Excel, Sheets or Numbers. Every string here
-	 * came from a website visitor, so `=HYPERLINK("http://evil","click")`
-	 * in a company-name field is a working attack on whoever opens the
-	 * export — carried out by our own file, on their machine, with their
-	 * spreadsheet's permissions.
-	 *
-	 * The fix is a leading apostrophe, which every spreadsheet reads as
-	 * "this is text". The visible cost is one odd-looking cell in the
-	 * rare case a value legitimately starts with a minus sign.
-	 *
-	 * @param string $value Cell value.
-	 * @return string
-	 */
-	private function cell( string $value ): string {
-		$value = str_replace( array( "\r\n", "\r", "\n" ), ' ', $value );
-
-		if ( '' !== $value && str_contains( "=+-@\t", $value[0] ) ) {
-			$value = "'" . $value;
-		}
-
-		return '"' . str_replace( '"', '""', $value ) . '"';
 	}
 
 	/**

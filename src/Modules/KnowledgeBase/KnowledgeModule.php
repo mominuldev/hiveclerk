@@ -24,6 +24,7 @@ use Hiveclerk\Modules\KnowledgeBase\Http\SourceController;
 use Hiveclerk\Database\Repositories\ChunkRepository;
 use Hiveclerk\Database\Repositories\DocumentRepository;
 use Hiveclerk\Database\Repositories\EmbeddingRepository;
+use Hiveclerk\Domain\Knowledge\ChunkQuotaInterface;
 use Hiveclerk\Domain\Knowledge\ChunkRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\DocumentRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\EmbeddingRepositoryInterface;
@@ -136,7 +137,8 @@ final class KnowledgeModule extends AbstractModule {
 				$c->get( ChunkerService::class ),
 				$c->get( KnowledgeSourceRepositoryInterface::class ),
 				$c->get( DocumentRepositoryInterface::class ),
-				$c->get( ChunkRepositoryInterface::class )
+				$c->get( ChunkRepositoryInterface::class ),
+				$c->get( ChunkQuotaInterface::class ),
 			)
 		);
 

@@ -22,14 +22,18 @@ use Hiveclerk\Database\Migrations\M0008_UsageCostNullable;
 use Hiveclerk\Database\Migrations\M0009_ConversationSupervision;
 use Hiveclerk\Database\Migrations\M0010_LeadPipeline;
 use Hiveclerk\Database\Repositories\ActivityRepository;
+use Hiveclerk\Database\Repositories\AnalyticsRepository;
 use Hiveclerk\Database\Repositories\AuditRepository;
 use Hiveclerk\Database\Repositories\EmailLogRepository;
+use Hiveclerk\Database\Repositories\GapRepository;
 use Hiveclerk\Database\Repositories\EnrollmentRepository;
 use Hiveclerk\Database\Repositories\IntegrationLogRepository;
 use Hiveclerk\Database\Repositories\IntegrationRepository;
 use Hiveclerk\Database\Repositories\LeadRepository;
 use Hiveclerk\Database\Repositories\LeadStageRepository;
 use Hiveclerk\Database\Repositories\RateLimitRepository;
+use Hiveclerk\Database\Repositories\ReportRepository;
+use Hiveclerk\Database\Repositories\RollupRepository;
 use Hiveclerk\Database\Repositories\ScoreEventRepository;
 use Hiveclerk\Database\Repositories\SequenceRepository;
 use Hiveclerk\Database\Repositories\SequenceStepRepository;
@@ -37,6 +41,10 @@ use Hiveclerk\Database\Repositories\SuppressionRepository;
 use Hiveclerk\Database\Repositories\UsageRepository;
 use Hiveclerk\Database\Repositories\VisitorRepository;
 use Hiveclerk\Core\Support\RateLimitStoreInterface;
+use Hiveclerk\Domain\Analytics\AnalyticsRepositoryInterface;
+use Hiveclerk\Domain\Analytics\GapRepositoryInterface;
+use Hiveclerk\Domain\Analytics\ReportSourceInterface;
+use Hiveclerk\Domain\Analytics\RollupSourceInterface;
 use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
 use Hiveclerk\Domain\Email\EmailLogRepositoryInterface;
 use Hiveclerk\Domain\Email\EnrollmentRepositoryInterface;
@@ -147,6 +155,30 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		$container->singleton(
 			AuditRepositoryInterface::class,
 			static fn (): AuditRepositoryInterface => new AuditRepository()
+		);
+
+		$container->singleton(
+			AnalyticsRepositoryInterface::class,
+			static fn (): AnalyticsRepositoryInterface => new AnalyticsRepository()
+		);
+
+		// Two ports, two classes, one table group. The rollup source is
+		// allowed to aggregate the message table because only a background
+		// job holds it; the report source reads live tables inside a
+		// request and is bounded by a date range for that reason.
+		$container->singleton(
+			RollupSourceInterface::class,
+			static fn (): RollupSourceInterface => new RollupRepository()
+		);
+
+		$container->singleton(
+			ReportSourceInterface::class,
+			static fn (): ReportSourceInterface => new ReportRepository()
+		);
+
+		$container->singleton(
+			GapRepositoryInterface::class,
+			static fn (): GapRepositoryInterface => new GapRepository()
 		);
 
 		$container->singleton(

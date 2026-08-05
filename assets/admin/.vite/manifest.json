@@ -1,0 +1,26 @@
+{
+  "_charts-d2bLABkh.js": {
+    "file": "assets/charts-d2bLABkh.js",
+    "name": "charts",
+    "imports": [
+      "_react-BIi7E_TS.js"
+    ]
+  },
+  "_react-BIi7E_TS.js": {
+    "file": "assets/react-BIi7E_TS.js",
+    "name": "react"
+  },
+  "admin-app/src/main.tsx": {
+    "file": "assets/main-BWfQOZbu.js",
+    "name": "main",
+    "src": "admin-app/src/main.tsx",
+    "isEntry": true,
+    "imports": [
+      "_react-BIi7E_TS.js",
+      "_charts-d2bLABkh.js"
+    ],
+    "css": [
+      "assets/main-DoYbr7Sa.css"
+    ]
+  }
+}

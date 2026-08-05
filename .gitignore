@@ -3,8 +3,16 @@
 /node_modules/
 
 # Build output is committed for release, but not the local dev cache.
+#
+# The two rules below are anchored on purpose. A bare `.vite/` matches at
+# every depth, which swallowed assets/admin/.vite/manifest.json — the one
+# file AssetManifest needs to find the hashed bundle. A fresh clone had
+# the built JS and CSS committed and no way to name them, so the admin
+# screen said "the admin app has not been built yet" on every install
+# from a distribution ZIP.
 /assets/admin/.vite/manifest.json.tmp
-.vite/
+/node_modules/.vite/
+/.vite/
 
 # Tooling caches
 /.phpunit.cache/

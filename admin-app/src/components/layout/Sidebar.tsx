@@ -105,20 +105,36 @@ export function Sidebar({ clerks, onHire }: SidebarProps) {
 
       <div className="mt-auto px-4 py-3.5">
         <div className="hvc-hairline-x mb-3 h-px" />
-        <div className="flex items-center justify-between gap-2">
+
+        <NavLink
+          to="/settings/licence"
+          className={cn(
+            'flex items-center justify-between gap-2 rounded-lg px-1.5 py-1',
+            'transition-colors hover:bg-surface-hover',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
+          )}
+        >
           <span className="text-xs text-content-tertiary">
-            <span className="capitalize text-content-secondary">
-              {licence.tier}
-            </span>
+            <span className="text-content-secondary">{licence.tier_label}</span>
             {' · '}
             {licence.sites} {licence.sites === 1 ? 'site' : 'sites'}
           </span>
-          {licence.tier === 'free' && (
-            <span className="hvc-gradient-text text-xs font-semibold">
-              Upgrade
+
+          {/* The tier bought and the tier in force differ once a licence
+              lapses, and the second is the one that explains why a screen
+              is refusing. */}
+          {licence.tier !== licence.effective_tier ? (
+            <span className="text-xs font-semibold text-[var(--hvc-warning)]">
+              {licence.status_label}
             </span>
+          ) : (
+            licence.effective_tier === 'free' && (
+              <span className="hvc-gradient-text text-xs font-semibold">
+                Upgrade
+              </span>
+            )
           )}
-        </div>
+        </NavLink>
       </div>
     </aside>
   );

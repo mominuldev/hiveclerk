@@ -14,6 +14,7 @@ use Hiveclerk\Api\RestServer;
 use Hiveclerk\Core\Audit\AuditLogger;
 use Hiveclerk\Core\Capabilities\Capabilities;
 use Hiveclerk\Core\Container\Container;
+use Hiveclerk\Core\Licence\LicenceGate;
 use Hiveclerk\Core\Module\AbstractModule;
 use Hiveclerk\Core\Queue\JobRegistry;
 use Hiveclerk\Core\Queue\QueueInterface;
@@ -181,7 +182,8 @@ final class EmailModule extends AbstractModule {
 				$c->get( CopyGenerator::class ),
 				$c->get( EmailRenderer::class ),
 				$c->get( MergeTags::class ),
-				$c->get( SuppressionList::class )
+				$c->get( SuppressionList::class ),
+				$c->get( LicenceGate::class )
 			)
 		);
 

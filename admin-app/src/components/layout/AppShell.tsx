@@ -28,6 +28,10 @@ const PAGES: Record<string, { title: string; subtitle: string }> = {
   '/integrations': { title: 'Integrations', subtitle: 'Where leads go next' },
   '/workflows': { title: 'Workflows', subtitle: 'Automation without code' },
   '/analytics': { title: 'Analytics', subtitle: 'Funnel, topics and spend' },
+  '/onboarding': {
+    title: 'Setup',
+    subtitle: 'Five steps to a clerk on duty',
+  },
   '/settings/providers': {
     title: 'Settings',
     subtitle: 'Which model answers, and what it costs',

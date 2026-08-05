@@ -24,6 +24,16 @@ import { EmailShell } from '@/routes/email/EmailShell';
 import { Sequences } from '@/routes/email/Sequences';
 import { SequenceBuilder } from '@/routes/email/SequenceBuilder';
 import { EmailLog } from '@/routes/email/EmailLog';
+import { AnalyticsShell } from '@/routes/analytics/AnalyticsShell';
+import { AnalyticsOverview } from '@/routes/analytics/Overview';
+import { ClerkReport } from '@/routes/analytics/ClerkReport';
+import { Funnel } from '@/routes/analytics/Funnel';
+import { Topics } from '@/routes/analytics/Topics';
+import { Costs } from '@/routes/analytics/Costs';
+import { Gaps } from '@/routes/knowledge/Gaps';
+import { LicenceSettings } from '@/routes/settings/Licence';
+import { Branding } from '@/routes/settings/Branding';
+import { Wizard } from '@/routes/onboarding/Wizard';
 
 /*
  * A hash router avoids rewrite rules and server configuration entirely,
@@ -54,12 +64,6 @@ const SCAFFOLDED = [
     sprint: 'Version 2.0',
     summary:
       'Triggers, conditions, actions and branching. Deliberately out of scope for V1.',
-  },
-  {
-    path: 'analytics',
-    area: 'Analytics',
-    sprint: 'Sprint 9',
-    summary: 'Funnel, topics, per-clerk performance and spend, each with a written finding.',
   },
 ] as const;
 
@@ -109,13 +113,34 @@ export function App() {
                   still lands somewhere nameable. */}
               <Route index element={<Navigate to="sources" replace />} />
               <Route path="sources" element={<Knowledge />} />
+              <Route path="gaps" element={<Gaps />} />
               <Route path="playground" element={<Playground />} />
               <Route path="embedding" element={<EmbeddingSettings />} />
             </Route>
 
+            <Route path="analytics" element={<AnalyticsShell />}>
+              {/* Redirect rather than an index element, so the tab bar
+                  always has an active tab and a bookmarked /analytics
+                  still lands somewhere nameable. */}
+              <Route index element={<Navigate to="overview" replace />} />
+              <Route path="overview" element={<AnalyticsOverview />} />
+              <Route path="clerks" element={<ClerkReport />} />
+              <Route path="funnel" element={<Funnel />} />
+              <Route path="topics" element={<Topics />} />
+              <Route path="costs" element={<Costs />} />
+            </Route>
+
+            {/* Inside the shell rather than outside it: an operator who
+                skipped setup and came back needs the way out that the
+                sidebar provides, and a full-screen flow with no exit is
+                a flow people leave by closing the tab. */}
+            <Route path="onboarding" element={<Wizard />} />
+
             <Route path="settings" element={<Settings />}>
               <Route index element={<Navigate to="providers" replace />} />
               <Route path="providers" element={<Providers />} />
+              <Route path="licence" element={<LicenceSettings />} />
+              <Route path="branding" element={<Branding />} />
               <Route path="audit" element={<AuditLog />} />
             </Route>
 

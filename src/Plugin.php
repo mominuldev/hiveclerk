@@ -90,6 +90,7 @@ final class Plugin {
 		$this->container->register( new ApiServiceProvider() );
 
 		$this->registerMigrationHook();
+		$this->registerLicenceRefresh();
 
 		$this->container->get( RestServer::class )->boot();
 
@@ -110,10 +111,19 @@ final class Plugin {
 		// pipeline.
 		$registry->add( new Modules\Integrations\IntegrationsModule() );
 		$registry->add( new Modules\Email\EmailModule() );
-		// Agents last: the test console runs a clerk through Chat's prompt
-		// builder and guardrails, so both have to be bound before it asks
-		// the container for them.
+		// Agents before Analytics: the test console runs a clerk through
+		// Chat's prompt builder and guardrails, so both have to be bound
+		// before it asks the container for them.
 		$registry->add( new Modules\Agents\AgentsModule() );
+		// Analytics last, because it reads from everything and is called
+		// by nothing. Its gap composer writes an FAQ pair and queues
+		// KnowledgeBase's index job; its needs-attention queue reads
+		// Integrations' sync log. Both dependencies are one way.
+		$registry->add( new Modules\Analytics\AnalyticsModule() );
+		// Onboarding after Analytics only because it is the last thing
+		// added; it depends on Knowledge and Agents, both long since
+		// bound.
+		$registry->add( new Modules\Onboarding\OnboardingModule() );
 
 		/**
 		 * Register feature modules.
@@ -179,6 +189,29 @@ final class Plugin {
 				}
 			},
 			5
+		);
+	}
+
+	/**
+	 * Re-check a stale licence on the next admin request.
+	 *
+	 * On `admin_init` rather than inside an entitlement check. A gate that
+	 * made a network call would put our licence server's latency inside
+	 * every request that saved a connector or hired a clerk, and a slow
+	 * server at our end would present as a slow admin at theirs.
+	 *
+	 * Priority 20, after the migration hook: a licence check is never the
+	 * reason a schema change waits.
+	 *
+	 * @return void
+	 */
+	private function registerLicenceRefresh(): void {
+		add_action(
+			'admin_init',
+			function (): void {
+				$this->container->get( Core\Licence\LicenceService::class )->refreshIfStale();
+			},
+			20
 		);
 	}
 

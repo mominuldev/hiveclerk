@@ -17,12 +17,16 @@ use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
 use Hiveclerk\Infrastructure\Queue\ActionSchedulerQueue;
 use Hiveclerk\Infrastructure\Queue\CronQueue;
 use Hiveclerk\Core\Admin\AssetManifest;
+use Hiveclerk\Core\Branding\BrandingService;
 use Hiveclerk\Core\Container\Container;
 use Hiveclerk\Core\Container\ServiceProvider;
 use Hiveclerk\Core\Events\EventBus;
 use Hiveclerk\Core\Module\ModuleRegistry;
+use Hiveclerk\Core\Licence\LicenceService;
 use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Support\ClockInterface;
+use Hiveclerk\Domain\Knowledge\ChunkQuotaInterface;
+use Hiveclerk\Domain\Knowledge\UnlimitedChunkQuota;
 use Hiveclerk\Domain\Lead\NullVisitorResolver;
 use Hiveclerk\Domain\Lead\VisitorResolverInterface;
 use Hiveclerk\Core\Support\SystemClock;
@@ -62,6 +66,16 @@ final class CoreServiceProvider extends ServiceProvider {
 		$container->singleton(
 			SettingsRepository::class,
 			static fn (): SettingsRepository => new SettingsRepository()
+		);
+
+		// A null object, replaced by the licence-backed quota in
+		// ApiServiceProvider. Ingestion always has one, so there is no
+		// nullable collaborator anywhere in the path that creates chunks
+		// — a null check somebody forgets there is a cap that does not
+		// exist.
+		$container->singleton(
+			ChunkQuotaInterface::class,
+			static fn (): ChunkQuotaInterface => new UnlimitedChunkQuota()
 		);
 
 		$container->singleton(
@@ -115,7 +129,10 @@ final class CoreServiceProvider extends ServiceProvider {
 			AdminPage::class,
 			static fn ( Container $c ): AdminPage => new AdminPage(
 				$c->get( AssetManifest::class ),
-				$c->get( SettingsRepository::class )
+				$c->get( SettingsRepository::class ),
+				$c->get( BrandingService::class ),
+				$c->get( LicenceService::class ),
+				$c->get( ClockInterface::class )
 			)
 		);
 	}

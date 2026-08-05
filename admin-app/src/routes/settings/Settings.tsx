@@ -1,13 +1,13 @@
 import { Outlet } from 'react-router-dom';
-import { KeyRound, ScrollText, Shield, Sparkles } from 'lucide-react';
+import { KeyRound, Palette, ScrollText, Shield, Sparkles } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
 
 /**
  * The settings area.
  *
- * Providers and the audit log are real in Sprint 2. Privacy and branding
- * are listed but not linked — showing a tab that opens an empty screen
- * would be a worse lie than showing one that says when it arrives.
+ * Privacy is still absent rather than listed: showing a tab that opens an
+ * empty screen is a worse lie than showing none and saying when it
+ * arrives.
  */
 export function Settings() {
   return (
@@ -21,6 +21,16 @@ export function Settings() {
               icon: <Sparkles size={14} aria-hidden="true" />,
             },
             {
+              label: 'Licence',
+              to: '/settings/licence',
+              icon: <Shield size={14} aria-hidden="true" />,
+            },
+            {
+              label: 'Branding',
+              to: '/settings/branding',
+              icon: <Palette size={14} aria-hidden="true" />,
+            },
+            {
               label: 'Audit log',
               to: '/settings/audit',
               icon: <ScrollText size={14} aria-hidden="true" />,
@@ -32,10 +42,9 @@ export function Settings() {
       <Outlet />
 
       <p className="flex items-center gap-1.5 text-xs text-content-tertiary">
-        <Shield size={12} aria-hidden="true" />
-        Privacy, branding and licence settings arrive in Sprint 9.
-        <KeyRound size={12} aria-hidden="true" className="ml-1" />
-        Keys are stored encrypted and are never returned by the API.
+        <KeyRound size={12} aria-hidden="true" />
+        Provider and licence keys are stored encrypted and are never returned
+        by the API. Privacy settings arrive in Sprint 10.
       </p>
     </div>
   );

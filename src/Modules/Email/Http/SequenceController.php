@@ -13,6 +13,8 @@ use Hiveclerk\Api\AbstractController;
 use Hiveclerk\Api\ErrorCode;
 use Hiveclerk\Api\Response\ApiResponse;
 use Hiveclerk\Core\Capabilities\Capabilities;
+use Hiveclerk\Core\Licence\Feature;
+use Hiveclerk\Core\Licence\LicenceGate;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Email\EmailLogEntry;
 use Hiveclerk\Domain\Email\EmailLogRepositoryInterface;
@@ -60,6 +62,7 @@ final class SequenceController extends AbstractController {
 	 * @param EmailRenderer                   $renderer  Message rendering.
 	 * @param MergeTags                       $tags      Merge tag vocabulary.
 	 * @param SuppressionList                 $suppression Do-not-email list.
+	 * @param LicenceGate                     $licence   Tier entitlements.
 	 */
 	public function __construct(
 		private readonly SequenceService $service,
@@ -71,7 +74,8 @@ final class SequenceController extends AbstractController {
 		private readonly CopyGenerator $copy,
 		private readonly EmailRenderer $renderer,
 		private readonly MergeTags $tags,
-		private readonly SuppressionList $suppression
+		private readonly SuppressionList $suppression,
+		private readonly LicenceGate $licence
 	) {
 	}
 
@@ -314,6 +318,17 @@ final class SequenceController extends AbstractController {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function create( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		// FR-EML-08. Creating and activating are both gated; editing and
+		// reading are not. A customer whose licence lapses keeps every
+		// sequence they wrote and can still see what it sent — they just
+		// cannot start another one. Deleting their copy would be taking
+		// back work they did.
+		$refusal = $this->licence->refusal( Feature::EmailSequences );
+
+		if ( null !== $refusal ) {
+			return $refusal;
+		}
+
 		try {
 			$sequence = $this->service->create( $this->sequenceInput( $request ) );
 		} catch ( EmailException $e ) {
@@ -366,6 +381,12 @@ final class SequenceController extends AbstractController {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function activate( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		$refusal = $this->licence->refusal( Feature::EmailSequences );
+
+		if ( null !== $refusal ) {
+			return $refusal;
+		}
+
 		$sequence = $this->sequence( $request );
 
 		if ( $sequence instanceof WP_Error ) {

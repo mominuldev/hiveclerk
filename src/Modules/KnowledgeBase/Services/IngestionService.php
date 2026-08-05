@@ -11,6 +11,7 @@ namespace Hiveclerk\Modules\KnowledgeBase\Services;
 
 use Hiveclerk\Domain\Knowledge\Document;
 use Hiveclerk\Domain\Knowledge\DocumentRepositoryInterface;
+use Hiveclerk\Domain\Knowledge\ChunkQuotaInterface;
 use Hiveclerk\Domain\Knowledge\ChunkRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\KnowledgeSource;
 use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
@@ -66,6 +67,7 @@ final class IngestionService {
 	 * @param KnowledgeSourceRepositoryInterface $sources    Sources.
 	 * @param DocumentRepositoryInterface        $documents  Documents.
 	 * @param ChunkRepositoryInterface           $chunks     Chunks.
+	 * @param ChunkQuotaInterface                $quota      How much may still be indexed.
 	 */
 	public function __construct(
 		private readonly ExtractorRegistry $extractors,
@@ -73,6 +75,7 @@ final class IngestionService {
 		private readonly KnowledgeSourceRepositoryInterface $sources,
 		private readonly DocumentRepositoryInterface $documents,
 		private readonly ChunkRepositoryInterface $chunks,
+		private readonly ChunkQuotaInterface $quota,
 	) {
 	}
 
@@ -110,9 +113,18 @@ final class IngestionService {
 		$progress->stage = 'extracting';
 		$this->publish( $source, $progress );
 
-		$options = ChunkOptions::fromConfig( $source->config );
-		$seen    = array();
-		$known   = $this->documents->externalIds( $sourceId );
+		$options  = ChunkOptions::fromConfig( $source->config );
+		$seen     = array();
+		$known    = $this->documents->externalIds( $sourceId );
+		$headroom = $this->headroomFor( $source );
+
+		if ( null !== $headroom && $headroom <= 0 ) {
+			return $this->fail(
+				$source,
+				$progress,
+				__( 'This licence has no indexed chunks left. Everything already indexed keeps working.', 'hiveclerk' )
+			);
+		}
 
 		try {
 			foreach ( $extractor->extract( $source ) as $extracted ) {
@@ -127,6 +139,32 @@ final class IngestionService {
 				$this->ingestOne( $source, $extracted, $options, $progress );
 
 				++$progress->processed;
+
+				/*
+				 * Checked between documents, not per chunk. Stopping
+				 * inside a document would store half an answer, and half
+				 * an answer retrieved with confidence is worse than no
+				 * answer at all — so the run overshoots by at most one
+				 * document and then stops cleanly.
+				 *
+				 * Documents already written stay written. The source is
+				 * left Ready with an explanation rather than Failed:
+				 * partial knowledge is still knowledge, and marking it
+				 * failed would hide it from every clerk that reads it.
+				 */
+				if ( null !== $headroom && $progress->chunks >= $headroom ) {
+					$progress->stage = 'quota_reached';
+
+					$source->lastError = sprintf(
+						/* translators: %s: chunk allowance, already formatted. */
+						__( 'Indexing stopped at this licence\'s %s-chunk allowance. Everything indexed so far is live.', 'hiveclerk' ),
+						number_format_i18n( $headroom )
+					);
+
+					$this->prune( $known, $seen );
+
+					return $this->finish( $source, $progress, SourceStatus::Ready );
+				}
 
 				if ( 0 === $progress->processed % self::PROGRESS_EVERY ) {
 					$this->publish( $source, $progress );
@@ -145,6 +183,24 @@ final class IngestionService {
 		$this->prune( $known, $seen );
 
 		return $this->finish( $source, $progress, SourceStatus::Ready );
+	}
+
+	/**
+	 * How many chunks this run may create.
+	 *
+	 * The source's own existing chunks are added back before the check,
+	 * because a re-index replaces them rather than adding to them.
+	 * Without that, re-indexing a source that already fills the allowance
+	 * would refuse to run at all, and the customer would watch their
+	 * knowledge base go stale with no way to refresh it.
+	 *
+	 * @param KnowledgeSource $source Source being indexed.
+	 * @return int|null Null means no limit.
+	 */
+	private function headroomFor( KnowledgeSource $source ): ?int {
+		$elsewhere = max( 0, $this->sources->totalChunks() - $source->chunkCount );
+
+		return $this->quota->remaining( $elsewhere );
 	}
 
 	/**

@@ -13,6 +13,7 @@ use Hiveclerk\Api\AbstractController;
 use Hiveclerk\Api\ErrorCode;
 use Hiveclerk\Api\Response\ApiResponse;
 use Hiveclerk\Core\Capabilities\Capabilities;
+use Hiveclerk\Core\Licence\LicenceGate;
 use Hiveclerk\Core\Support\ClockInterface;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Domain\Agent\Agent;
@@ -70,6 +71,7 @@ final class AgentController extends AbstractController {
 	 * @param KnowledgeSourceRepositoryInterface $sources       Knowledge sources.
 	 * @param RateLimiter                        $limiter       Rate limiter.
 	 * @param ClockInterface                     $clock         Clock.
+	 * @param LicenceGate                        $licence       Tier entitlements.
 	 */
 	public function __construct(
 		private readonly AgentService $agents,
@@ -81,7 +83,8 @@ final class AgentController extends AbstractController {
 		private readonly ConversationRepositoryInterface $conversations,
 		private readonly KnowledgeSourceRepositoryInterface $sources,
 		private readonly RateLimiter $limiter,
-		private readonly ClockInterface $clock
+		private readonly ClockInterface $clock,
+		private readonly LicenceGate $licence
 	) {
 	}
 
@@ -257,6 +260,17 @@ final class AgentController extends AbstractController {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function create( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		// The free tier's second upgrade trigger (D16 §3). Counted at the
+		// point of hiring rather than enforced over the roster: a customer
+		// who drops to free with three clerks keeps all three answering,
+		// and hires no more until they upgrade. Archiving somebody's live
+		// support channel to collect a renewal is not degradation.
+		$refusal = $this->licence->clerkRefusal( $this->repository->count() );
+
+		if ( null !== $refusal ) {
+			return $refusal;
+		}
+
 		try {
 			$agent = $this->agents->create( $this->input( $request ) );
 		} catch ( AgentException $e ) {

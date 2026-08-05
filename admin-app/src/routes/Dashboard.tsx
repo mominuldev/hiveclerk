@@ -1,160 +1,248 @@
-import { Database, Layers, Sparkles } from 'lucide-react';
-import { Card, StatRow } from '@/components/ui/Card';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, ArrowRight, CircleAlert, Info } from 'lucide-react';
+import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorNotice } from '@/components/ui/ErrorNotice';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { StatusDot } from '@/components/ui/StatusDot';
 import { Button } from '@/components/ui/Button';
-import { Logomark } from '@/components/brand/Logomark';
-import { useSystemStatus } from '@/api/queries/useSystemStatus';
+import { KpiCard } from '@/components/analytics/KpiCard';
+import {
+  RangePicker,
+  rangeParams,
+  type RangeDays,
+} from '@/components/analytics/RangePicker';
+import { TrendChart } from '@/components/charts/TrendChart';
+import { BarRow } from '@/components/charts/BarRow';
+import { useOverview, useAgentReport, type Alert } from '@/api/queries/useAnalytics';
+import { cn } from '@/lib/cn';
+
+const SEVERITY_ICON = {
+  urgent: CircleAlert,
+  warning: AlertTriangle,
+  info: Info,
+} as const;
+
+const SEVERITY_COLOUR = {
+  urgent: 'text-[var(--hvc-danger)]',
+  warning: 'text-[var(--hvc-warning)]',
+  info: 'text-content-tertiary',
+} as const;
 
 /**
- * Sprint 1 dashboard.
+ * The first screen of the product (D11 §3).
  *
- * Reads live counts from GET /system/status, which is the proof that
- * routing, capability checks and the repository layer are wired together.
- * The KPI cards from the wireframes arrive in Sprint 9 once there is real
- * data behind them — fabricated metrics would imply work that has not
- * happened.
+ * Qualified leads leads the KPI row because it is the PRD's North Star:
+ * conversation count can rise while the product fails, and qualified
+ * conversations cannot.
+ *
+ * Everything here comes from one request. The dashboard renders all of it
+ * at once, and five queries would be five chances for the screen to
+ * assemble itself in front of the reader.
  */
 export function Dashboard() {
-  const { data, isPending, isError, error, refetch } = useSystemStatus();
+  const [days, setDays] = useState<RangeDays>(30);
+  const [agent, setAgent] = useState('all');
 
-  if (isError) {
-    return <ErrorNotice error={error} onRetry={() => void refetch()} />;
+  const filters = { ...rangeParams(days), agent };
+  const overview = useOverview(filters);
+  const roster = useAgentReport(filters);
+
+  if (overview.isError) {
+    return (
+      <ErrorNotice
+        error={overview.error}
+        onRetry={() => void overview.refetch()}
+      />
+    );
   }
+
+  const data = overview.data;
+  const alerts = data?.alerts ?? [];
+  const banner = alerts.find((alert) => 'knowledge_gaps' === alert.kind);
+  const queue = alerts.filter((alert) => 'knowledge_gaps' !== alert.kind);
 
   return (
     <div className="space-y-5">
-      {/* Hero: the one place the brand surface appears on a content screen. */}
-      <Card feature className="p-0">
-        <div className="flex items-start gap-4 p-6">
-          <Logomark size={44} className="rounded-xl" />
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-xl font-bold tracking-[-0.02em] text-content">
+          Dashboard
+        </h1>
+        <RangePicker
+          days={days}
+          onDays={setDays}
+          agent={agent}
+          onAgent={setAgent}
+        />
+      </header>
 
-          <div className="min-w-0">
-            <div className="mb-1.5 flex flex-wrap items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-content-tertiary">
-                Sprint 1 · Milestone M0
-              </p>
-              {isPending ? (
-                <Skeleton className="h-4 w-28" />
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-sunken px-2 py-0.5">
-                  <StatusDot
-                    status={data.ready ? 'on_duty' : 'draft'}
-                    iconOnly
-                  />
-                  <span className="text-[11px] font-medium text-content-secondary">
-                    {data.ready
-                      ? 'Serving visitors'
-                      : 'No clerk on duty yet'}
-                  </span>
-                </span>
-              )}
-            </div>
-
-            <h2 className="font-display text-xl font-bold tracking-[-0.02em] text-content">
-              The data layer is live
-            </h2>
-            <p className="mt-1.5 max-w-[62ch] text-sm leading-relaxed text-content-secondary">
-              27 tables, four repositories, REST with capability checks,
-              AES-256-GCM secret storage and rate limiting. Knowledge ingestion
-              lands in Sprint 3, retrieval in Sprint 4, and the first real
-              conversation in Sprint 5.
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card
-          eyebrow="Live from the API"
-          title="What's in the database"
-          actions={<Database size={15} className="text-content-tertiary" />}
+      {banner && (
+        <Link
+          to={banner.href}
+          className={cn(
+            'flex items-center justify-between gap-4 rounded-xl border border-border bg-surface px-4 py-3',
+            'transition-colors hover:border-border-strong hover:bg-surface-hover',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
+          )}
         >
-          {isPending ? (
-            <div className="space-y-2.5">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} className="h-8 w-full" />
-              ))}
-            </div>
+          <span className="flex min-w-0 items-center gap-2.5">
+            <AlertTriangle
+              size={16}
+              aria-hidden="true"
+              className="shrink-0 text-[var(--hvc-warning)]"
+            />
+            <span className="min-w-0 text-sm text-content">{banner.title}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-accent-text">
+            Review knowledge gaps
+            <ArrowRight size={14} aria-hidden="true" />
+          </span>
+        </Link>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {overview.isPending
+          ? [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[148px] rounded-xl" />)
+          : data?.kpis.map((kpi, index) => (
+              <KpiCard key={kpi.key} kpi={kpi} feature={index === 0} />
+            ))}
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
+        <Card eyebrow="Conversation volume" title="How busy your clerks have been">
+          {overview.isPending ? (
+            <Skeleton className="h-[180px] w-full" />
           ) : (
-            <dl>
-              <StatRow
-                label="Clerks"
-                value={data.counts.agents.toLocaleString()}
-                emphasis
-              />
-              <StatRow
-                label="On duty"
-                value={data.counts.published.toLocaleString()}
-              />
-              <StatRow
-                label="Conversations"
-                value={data.counts.conversations.toLocaleString()}
-              />
-              <StatRow
-                label="Knowledge sources"
-                value={data.counts.sources.toLocaleString()}
-              />
-              <StatRow
-                label="Indexed chunks"
-                value={data.counts.chunks.toLocaleString()}
-              />
-            </dl>
+            <TrendChart
+              label="Conversations"
+              points={(data?.series ?? []).map((day) => ({
+                date: day.date,
+                value: day.conversations,
+              }))}
+            />
           )}
         </Card>
 
-        <Card
-          eyebrow="Schema"
-          title="Migration state"
-          actions={<Layers size={15} className="text-content-tertiary" />}
-        >
-          {isPending ? (
-            <div className="space-y-2.5">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-8 w-full" />
-              ))}
-            </div>
+        <Card eyebrow="Roster performance" title="Who is carrying the load">
+          {roster.isPending ? (
+            <Skeleton className="h-[180px] w-full" />
+          ) : (data?.totals.conversations ?? 0) === 0 ? (
+            <EmptyState
+              bare
+              title="Nobody has been asked anything yet."
+              description="Once a clerk is on duty and visitors start talking, this compares them."
+            />
           ) : (
-            <>
-              <dl>
-                <StatRow
-                  label="Applied version"
-                  value={`${data.database.version} / ${data.database.latest}`}
-                  emphasis
-                />
-                <StatRow
-                  label="Pending migrations"
-                  value={data.database.needs_migration ? 'Yes' : 'None'}
-                />
-                <StatRow label="Server time (UTC)" value={data.time} />
-              </dl>
+            <div>
+              {(roster.data?.agents ?? []).slice(0, 6).map((row) => {
+                const busiest = Math.max(
+                  ...(roster.data?.agents ?? []).map((a) => a.conversations),
+                  1
+                );
 
-              <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface-sunken px-3 py-2">
-                <Sparkles size={13} className="shrink-0 text-accent" />
-                <p className="text-xs text-content-secondary">
-                  Schema is current. Nothing to apply.
-                </p>
-              </div>
-            </>
+                return (
+                  <BarRow
+                    key={row.agent.uuid}
+                    label={row.agent.name}
+                    value={`${row.conversations.toLocaleString()} conv`}
+                    fraction={row.conversations / busiest}
+                    detail={
+                      row.deflection_rate === null
+                        ? // Not "0% deflection". That is a judgement about
+                          // a clerk nobody spoke to.
+                          'No conversations in this period'
+                        : `${Math.round(row.deflection_rate * 100)}% answered without a person`
+                    }
+                  />
+                );
+              })}
+            </div>
           )}
         </Card>
       </div>
 
-      {!isPending && data.counts.agents === 0 && (
-        <Card>
-          <EmptyState
-            title="Nobody's on duty yet."
-            description="Hiring a clerk arrives in Sprint 6. The data layer behind it is ready now."
-            action={
-              <Button variant="primary" size="sm" disabled>
-                Hire a clerk
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card
+          eyebrow="Top questions"
+          title="What visitors arrive asking"
+          actions={
+            <Link to="/analytics/topics">
+              <Button variant="ghost" size="sm">
+                See all
               </Button>
-            }
-          />
+            </Link>
+          }
+        >
+          {overview.isPending ? (
+            <Skeleton className="h-[160px] w-full" />
+          ) : (data?.top_topics.length ?? 0) === 0 ? (
+            <EmptyState
+              bare
+              title="No questions yet."
+              description="This fills in as soon as somebody talks to a clerk."
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {data?.top_topics.map((topic) => (
+                <li
+                  key={topic.label}
+                  className="flex items-baseline justify-between gap-4 py-2 text-sm"
+                >
+                  <span className="min-w-0 truncate text-content">{topic.label}</span>
+                  <span className="shrink-0 font-mono text-[13px] tabular-nums text-content-secondary">
+                    {topic.count}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
-      )}
+
+        <Card eyebrow="Needs attention" title="What is waiting on a person">
+          {overview.isPending ? (
+            <Skeleton className="h-[160px] w-full" />
+          ) : queue.length === 0 ? (
+            <EmptyState bare title="Nothing needs you right now." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {queue.map((alert) => (
+                <AlertRow key={`${alert.kind}-${alert.title}`} alert={alert} />
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
     </div>
+  );
+}
+
+function AlertRow({ alert }: { alert: Alert }) {
+  const Icon = SEVERITY_ICON[alert.severity];
+
+  return (
+    <li>
+      <Link
+        to={alert.href}
+        className={cn(
+          'flex items-start gap-2.5 py-2.5',
+          'transition-colors hover:text-content',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
+        )}
+      >
+        <Icon
+          size={14}
+          aria-hidden="true"
+          className={cn('mt-0.5 shrink-0', SEVERITY_COLOUR[alert.severity])}
+        />
+        <span className="min-w-0">
+          <span className="block text-sm text-content">{alert.title}</span>
+          {alert.detail && (
+            <span className="mt-0.5 block truncate text-xs text-content-tertiary">
+              {alert.detail}
+            </span>
+          )}
+        </span>
+      </Link>
+    </li>
   );
 }

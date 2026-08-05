@@ -6,6 +6,366 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Sprint 9 — Analytics, onboarding, licensing
+
+**Goal:** prove value, reduce time-to-value, take money.
+
+#### Added
+
+- **The Analytics module** (`src/Modules/Analytics/`) — `RollupService`
+  turns finished days into stored counters (D7 §8.2), `AnalyticsService`
+  reads them back as KPIs, series, funnel and topics (FR-ANL-01, 02, 05,
+  06), `GapService` records what a clerk could not answer and closes the
+  loop when somebody answers it (FR-ANL-03), `AlertService` builds the
+  needs-attention queue, and `ReportExporter` gets any of it out as CSV
+  (FR-ANL-07).
+- **Two ports over one table group, deliberately.** `RollupSource` reads
+  conversations, messages, visitors, leads and usage events and is
+  allowed to be expensive because only a background job holds it;
+  `ReportSource` reads live tables inside a request and is bounded by a
+  date range for that reason. Merging them would have given the
+  dashboard's repository a method that scans the message table, which is
+  the one thing the rollup exists to prevent anybody doing by accident.
+- **Knowledge gaps, the product's compounding-value mechanic** (D11
+  §7.3). A question that finds nothing confident is recorded against the
+  clerk, deduplicated by a hash of its normalised text, and counted.
+  *Write an answer* saves an FAQ pair, attaches the source to the clerk
+  that could not answer, queues the index run and marks the gap resolved
+  — without leaving the screen.
+- **`LicenceService`, `LicenceGate` and `LicenceClient`** (FR-SYS-01,
+  D16 §7) — activation, deactivation, seat reporting and a twelve-hour
+  re-check, with the key encrypted in its own option and never returned
+  by any endpoint. Five tiers with their limits on the tier itself, not
+  on a settings screen: a limit an operator can edit is not a limit.
+- **The gates that make the free tier a funnel** — one clerk (D16 §3
+  trigger 2), 200 indexed chunks (trigger 1), the badge (trigger 3), CRM
+  sync (FR-CRM-10, trigger 4) and email sequences (FR-EML-08). The chunk
+  cap is enforced inside ingestion through `ChunkQuotaInterface`, so a
+  crawl stops at the allowance rather than discovering it afterwards.
+- **White-label mode** (FR-SYS-08) — `BrandingService` resolves what the
+  customer saved against what their tier covers, and everything that
+  renders branding takes the resolved object. Badge removal is Pro;
+  replacing the product's name and mark throughout the admin is Agency.
+- **The onboarding wizard** (FR-ONB-01, 04, 05; D11 §12) — five steps,
+  resumable, skippable and re-runnable. `SourceDetector` samples the
+  site's own content and pre-ticks pages, posts and products with a
+  chunk count and a cost estimate beside each.
+- **The dashboard the wireframes describe** (D11 §3): four KPI cards led
+  by qualified leads, the conversation-volume trend, roster performance,
+  top questions and a needs-attention queue that is derived on read.
+  Plus the analytics area's five tabs (D11 §10), the gaps worklist, the
+  licence and branding settings tabs, and a `Gaps` tab carrying its open
+  count.
+- **Three chart primitives, hand-drawn in SVG** — `Sparkline`,
+  `TrendChart` and `BarRow`. Recharts is in the dependency list and
+  would have rendered these in four lines; it also costs roughly a third
+  of the whole admin bundle budget, and the KPI row renders four
+  sparklines above the fold on the first screen of the product. The
+  trend chart's readout is keyboard reachable, because a chart whose
+  only way in is `mousemove` is a chart half the audience cannot read.
+- REST: 17 new routes — the `/admin/analytics` surface,
+  `/admin/knowledge/gaps`, `/admin/settings/licence`,
+  `/admin/settings/branding` and the `/admin/onboarding` surface.
+
+#### Fixed
+
+- **The per-clerk comparison was always missing today.** `series()`
+  merged today's live figures over the stored rollup; `byAgent()` read
+  only the stored rows, and today is never stored. Every clerk read zero
+  on a site whose first day was today — which is exactly the day
+  somebody watches the screen. Caught by rendering the dashboard against
+  the real database rather than by a test, and it would not have been
+  caught by one: the fake would have had yesterday's rows in it.
+- **The date-range selects clipped their own last character.** A native
+  select draws its chevron inside the box, and "Last 30 days" ran
+  underneath it.
+- **The built admin app was undistributable and had been since Sprint
+  1.** `.gitignore` carried a bare `.vite/`, which matches at every
+  depth and therefore swallowed `assets/admin/.vite/manifest.json` — the
+  one file `AssetManifest` reads to turn an entry name into a hashed
+  filename. Every clone had the built JS and CSS committed and no way to
+  name them, so a fresh checkout, and every WordPress.org distribution
+  ZIP, would have shown "the admin app has not been built yet" on the
+  plugin's only screen. Invisible on any machine that had ever run
+  `npm run build`, which is every machine the plugin has been opened on.
+  The rules are anchored now, and the manifest is committed.
+
+#### Security
+
+- **Every one of the 17 new routes is capability-gated**, verified by
+  `tools/verify-routes.php` (SEC-04). Analytics reads want
+  `view_conversations` — spend is operational information the person
+  answerable for the bill needs, and gating it behind the API key's
+  capability would hide it from them. Gaps want `manage_knowledge`,
+  because every action on that screen writes to the knowledge base.
+  Licence and onboarding want `manage_settings`: a licence key is a
+  billing credential, and every wizard step is a decision about money
+  the site will spend.
+- **The licence key is encrypted in its own option, never in the
+  settings blob.** `GET /admin/settings` returns that blob wholesale and
+  is read by code written without a secret in mind. `Licence` has
+  nowhere to put a key, so nothing that renders a licence can leak one —
+  the same structural arrangement as `Integration`, and for the same
+  reason.
+- **Activation, deactivation and re-check are rate limited.** Each one
+  is an outbound request to our own licence server, so an unthrottled
+  endpoint is a way for one authenticated user to point a customer's
+  site at us as a load generator.
+- **The key is shape-validated and rejected, not sanitised.** A licence
+  key quietly cleaned by `sanitize_text_field()` fails at the server
+  with an error pointing at us instead of at the typo.
+- **`/admin/onboarding/detect` is throttled** because it samples the
+  database on every call, and the FAQ answer composer uses
+  `sanitize_textarea_field()` — the single-line version silently
+  flattens a two-paragraph answer, and the operator would find out from
+  the indexed result.
+- **`enum` on a route argument carries `rest_validate_request_arg`**
+  everywhere it appears here. WordPress only enforces `enum` when a
+  validate callback is registered alongside it — the bug Sprint 7 found
+  on `/public/events`.
+- **The formula-injection guard was promoted, not copied.**
+  `Core\Support\Csv` is now the one place this product turns a value
+  into a CSV cell; two copies is one that gets fixed and one that does
+  not, and the one that does not is a working attack on the customer's
+  own machine.
+
+#### Decisions worth recording
+
+- **The rollup is a lookup and then a write, never an upsert.**
+  `uq_date_agent (date, agent_id)` looks like it makes
+  `INSERT … ON DUPLICATE KEY UPDATE` safe, and for a per-clerk row it
+  is. It is not for the site-wide row, where `agent_id` is NULL and
+  MySQL treats every NULL in a unique index as distinct: an upsert would
+  insert a second site-wide row per run, and the dashboard — which adds
+  them up — would report double the conversations after the second run,
+  triple after the third, with nothing erroring. Verified by running the
+  rollup twice and counting rows.
+- **A caught-up site re-processes a trailing week; a behind one walks
+  forward.** A day's figures are not final at midnight — a rating left
+  this morning belongs to yesterday's conversation, and a conversation
+  opened at 23:55 collects most of its messages on the following date.
+  Sealing a day would leave all of that permanently uncounted and
+  nothing would report it; the dashboard would simply be quietly low.
+- **Today is computed live and never stored.** A stored partial day is a
+  number that is wrong for twenty-three hours and right for one.
+- **Every metric is filed under its conversation's start day.** Filing
+  each event on the day it happened makes `resolved_by_ai /
+  conversations` a ratio of two different populations, and the
+  deflection rate is the number the customer judges the product by.
+- **Unique visitors are counted site-wide, never summed from the
+  per-clerk rows.** One person who spoke to two clerks is two per-clerk
+  visitors and one site visitor, and summing would report the wrong
+  figure in the direction that flatters us.
+- **A KPI with no comparable previous period shows no percentage.**
+  Growth from zero is not a percentage: every implementation that tries
+  reports either infinity or a plausible lie. The card says "No earlier
+  period" instead.
+- **Deflection is `null`, not `0`, on a day nobody asked anything.**
+  Zero reads as a judgement about a clerk that was never given the
+  chance.
+- **Gap detection fires before the confidence check, not after.** A
+  clerk with "refuse to invent" switched off answers anyway, from a weak
+  match or from the model's own knowledge — and that answer is the one
+  the operator most wants to have written themselves. Keying the report
+  on the refusal would hide every gap on the clerks configured to be
+  helpful.
+- **An ignored gap stays ignored when it is asked again.** The
+  operator's decision outranks a fresh sighting; the occurrence count
+  still rises, because "we dismissed this and it has been asked ninety
+  more times" is worth being able to see.
+- **The best score kept is the best ever seen, not the latest.** A
+  question that scored 0.58 last week and 0.11 today has not got worse —
+  a different visitor phrased it differently — and showing the weaker
+  number sends the operator to write content that already exists.
+- **Topics are grouped by word overlap, not by a model.** Clustering a
+  month of questions with an LLM would produce better groups and a bill
+  nobody agreed to, on a screen the customer opens daily — which is
+  SEC-03's cost exhaustion with the customer holding the trigger. Each
+  row is labelled with a real question a visitor asked rather than with
+  the reduced key, so a wrong grouping is visible rather than asserted.
+- **Only the opening question of each conversation is counted.** Every
+  later message is a follow-up, a "yes" or a thank-you, and counting
+  those produces a top-questions list whose top entry is "thanks".
+- **An unreachable licence server is not a downgrade.** A timeout, a DNS
+  failure or a customer firewall must never read as "this key is fake" —
+  that turns an outage at our end into a support ticket at theirs.
+  `LicenceStatus::Unreachable` keeps entitlements and the screen says
+  the check has not succeeded recently.
+- **Graceful degradation removes nothing.** A lapsed licence stops CRM
+  sync, stops new sequences and brings the badge back. Clerks keep
+  answering, every indexed chunk stays searchable, every lead stays
+  where it is. Limits are checked on the way up — "may one more be
+  made" — because deleting a customer's own content when their card
+  expires is not degradation, it is data loss.
+- **The licence state lives in an option, not a transient.** On a site
+  with no persistent object cache a transient is a row in the same table
+  with an expiry we would then have to honour ourselves; on a site with
+  one, it is a licence that vanishes when somebody flushes Redis,
+  silently downgrading a paying customer.
+- **Branding preferences are stored even when the tier does not cover
+  them.** Refusing the save would mean an agency upgrading has to
+  re-tick every box, and a lapsed licence would erase their
+  configuration. The tier is applied on read, and the screen renders
+  both what was saved and what is in force.
+- **The wizard creates nothing of its own.** Every step drives the
+  endpoint that already exists — providers verify the key, agents hire
+  the clerk, knowledge creates the sources — and records what came back.
+  A wizard with its own create-everything endpoint is a second
+  implementation of every validation rule in the product, on the one
+  path where a customer decides whether to keep it.
+- **Onboarding progress is per site, not per user.** Setting up a site
+  is one job with one outcome, and a second administrator should not
+  start again and hire a second clerk onto the same pages.
+- **`/detect` never makes an HTTP request.** A wizard step that fetches
+  the customer's own site hangs on every install behind basic auth,
+  behind a staging password, or on a host that cannot resolve its own
+  hostname from inside its network. The sitemap is detected from
+  WordPress's own server, with a filter for Yoast and Rank Math.
+- **The sitemap is never pre-ticked.** It is the one suggestion that
+  reaches the network, costs the most, and overlaps almost entirely with
+  the post types above it.
+- **No migration this sprint.** `analytics_daily` and `unanswered` have
+  existed since `M0007` and the columns were the right ones; the licence
+  and onboarding state are options.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, driven with Playwright and
+`wp eval-file` against the real site.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **516**, 1,999 assertions (59 new) |
+| Integration tests | 22, 70 assertions |
+| SEC-04 | **96/96 routes gated**, including the 17 added here |
+| Admin bundle | **175.49 KB** gzipped (budget 350; was 162.15) |
+| Widget bundle | **16.74 KB** gzipped (budget 40; unchanged) |
+
+- **The NULL-upsert trap was measured, not reasoned about.**
+  `rollFor()` was run twice against the same day and the table was
+  counted: two rows written, two rows written again, two rows stored,
+  and exactly one site-wide row in the whole table.
+- **The rollup's day selection was driven against the real tables.** A
+  site whose earliest conversation is today produces zero pending days
+  and stores nothing — no rows of zeroes for days the product did not
+  exist.
+- **The gap loop was exercised end to end.** A question was recorded at
+  0.21; the same question in different case and punctuation counted a
+  second occurrence on the same row and kept the *better* score, 0.58;
+  ignoring it and asking again left it ignored at three occurrences.
+  Answering created the FAQ source, stored the pair, attached the source
+  to the clerk that could not answer, queued `IngestSourceJob`, and
+  moved the gap to resolved with the acting user recorded.
+- **The licence gate was walked at three tiers.** Free refuses CRM with
+  `hvc_licence_required` and the message "CRM sync is part of Pro";
+  clerk headroom is 1 at zero clerks and 0 at one; chunk headroom is 200
+  at zero chunks and 0 at 500. An expired Pro licence loses the feature
+  and keeps 9,000 indexed chunks searchable.
+- **Branding was saved at the wrong tier and read back.** With
+  `white_label => true`, `product_name => 'Acme Assist'` and
+  `hide_badge => true` stored on a free install, the resolved branding
+  reported `Hiveclerk`, white-label off, badge shown.
+- **Source detection ran against the site's own content**, returning
+  Posts and Pages with sampled chunk estimates and a cost, and finding
+  the core sitemap at `/wp-sitemap.xml`.
+- **All four CSV reports were generated** and the header row is excluded
+  from the reported count.
+- **Both themes were rendered** for the dashboard, the funnel, the gaps
+  worklist, the licence tab and the wizard.
+
+#### Not delivered this sprint
+
+- **Date-range comparison as a picker (FR-ANL-06).** The API computes
+  the previous period and every KPI carries its change; the UI offers
+  three fixed windows rather than the "vs [Previous period ▾]" control
+  in D11 §10. A calendar is the right control for "the week of the
+  launch" and three buttons are the right control for "what happened
+  lately", and the second is the question this screen is actually asked.
+- **A demo clerk seeded from the site's own content (FR-ONB-06).** P2,
+  and it needs a provider key before it can answer anything — which is
+  step one of the wizard it was meant to precede.
+- **Unmoderated onboarding testing with five participants.** The M3 exit
+  criterion is under ten minutes to a working clerk. The flow is built
+  and was driven by hand; it has not been put in front of anybody who
+  had not seen it before, so the ten-minute claim is unmeasured.
+- **The step-5 live preview on a screenshot of the customer's own
+  homepage** (D11 §12). Step 5 shows the clerk's configuration and a
+  one-click route to the test console; rendering the customer's homepage
+  needs a headless browser on their server, which is not a dependency
+  this product takes for a preview.
+- **Privacy settings (D11 §11).** Retention, IP anonymisation and
+  consent are still option keys with no screen. They belong with the
+  GDPR exporter and eraser in Sprint 10.
+- **`POST /admin/leads/{id}/sync`**, carried over from Sprints 7 and 8
+  for the third time. `SyncService::push()` is still what the route
+  would call.
+
+#### Known gaps
+
+- **No licence server exists.** `LicenceClient` is written against an
+  API that has not been built: the request shapes, the response fields
+  and the seat semantics are our own specification and nothing has ever
+  answered one. Every path through it has been exercised only against
+  the unreachable branch. This is the largest gap in the sprint, and the
+  whole monetisation mechanic sits behind it.
+- **The rollup has never processed more than one day.** The test site's
+  earliest conversation is today, so the backfill loop, the batch cap
+  and the re-enqueue have been proved by unit test against a fake
+  source, not by draining a year of real history. How long twenty-five
+  days of a busy site takes is unmeasured, and the twenty-second budget
+  every job here holds itself to is therefore unverified for this one.
+- **`qualifiedCounts()` scans the score log.** The inner query finds each
+  lead's first qualifying event and `score_after` is not indexed —
+  adding an index would slow every scoring write to speed up a query
+  that runs hourly. On a site with hundreds of thousands of score events
+  this is the slowest thing in the rollup and it has not been measured
+  at that size.
+- **The dashboard's "leads captured" and the funnel's "Captured" rung
+  count different populations, and can disagree.** The KPI counts every
+  lead created in the range, including ones typed in by hand or
+  imported; the funnel counts leads reached through a conversation that
+  started in the range. On a site where every lead comes from a
+  conversation they agree; on the test site, which has leads with no
+  conversation, they read 8 and 0. Both are correct for what they
+  measure and neither says so on screen.
+- **A rating left more than seven days after the conversation is never
+  counted.** The re-process window is seven days. Beyond it the day has
+  stopped changing in practice, but "in practice" is an assumption
+  nobody has checked against a real site's rating behaviour.
+- **Topic grouping is English-only and merges only plurals.** "Ship" and
+  "shipping" stay apart, and merging them needs a stemmer that would
+  also merge "rate" with "rating". Two genuinely different questions
+  sharing their content words will be counted as one. Both limits are
+  stated in the class and asserted in its tests, and neither is visible
+  to an operator reading the screen.
+- **Topics are sampled at 2,000 conversations.** The response says so
+  and the screen renders it, but the sample is the most recent
+  conversations rather than a random one — a site whose traffic changed
+  mid-month gets the second half.
+- **The chunk cap overshoots by up to one document.** It is checked
+  between documents rather than per chunk, because stopping inside a
+  document would store half an answer, and half an answer retrieved
+  confidently is worse than none. A single very long page can therefore
+  carry a free install past 200 chunks.
+- **Nothing enforces the seat limit locally.** `sites` is whatever the
+  licence server reported at the last check; this install has no way to
+  know it is the twenty-sixth site on an Agency key until the server
+  says so.
+- **The wizard's step 3 creates sources one at a time and reports each
+  failure separately.** Four selected sources are four sequential
+  requests; a slow one blocks the rest, and there is no progress
+  indication beyond the button's spinner.
+- **The needs-attention queue reads four repositories on every
+  dashboard load.** Handoffs, the roster, integrations and gap counts
+  are four separate queries, and the integration check is one query per
+  connected integration. At the two or three integrations a real site
+  has this is fine; nothing bounds it.
+- **`AlertService` returns one alert per paused clerk.** A customer who
+  pauses their whole roster for a holiday gets a queue full of them.
+
+---
+
 ### Sprint 8 — CRM and email
 
 **Goal:** leads leave the building.

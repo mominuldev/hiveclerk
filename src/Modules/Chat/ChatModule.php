@@ -15,6 +15,7 @@ use Hiveclerk\Core\Capabilities\Capabilities;
 use Hiveclerk\Core\Queue\JobRegistry;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Core\Settings\SettingsRepository;
+use Hiveclerk\Core\Branding\BrandingService;
 use Hiveclerk\Core\Container\Container;
 use Hiveclerk\Core\Module\AbstractModule;
 use Hiveclerk\Core\Support\ClockInterface;
@@ -102,7 +103,8 @@ final class ChatModule extends AbstractModule {
 			WidgetConfig::class,
 			static fn ( Container $c ): WidgetConfig => new WidgetConfig(
 				$c->get( AgentRepositoryInterface::class ),
-				$c->get( PageContextFactory::class )
+				$c->get( PageContextFactory::class ),
+				$c->get( BrandingService::class )
 			)
 		);
 

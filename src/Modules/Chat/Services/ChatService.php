@@ -24,6 +24,7 @@ use Hiveclerk\Domain\Conversation\Message;
 use Hiveclerk\Domain\Conversation\MessageRepositoryInterface;
 use Hiveclerk\Domain\Conversation\MessageRole;
 use Hiveclerk\Domain\Knowledge\RetrievalOptions;
+use Hiveclerk\Domain\Knowledge\RetrievalResult;
 use Hiveclerk\Domain\Knowledge\RetrievedChunk;
 use Hiveclerk\Domain\Shared\Uuid;
 use Hiveclerk\Domain\Usage\UsageKind;
@@ -183,6 +184,7 @@ final class ChatService {
 
 		$sourceIds = null === $agent->id ? array() : $this->agents->sourceIds( $agent->id );
 		$retrieved = array();
+		$result    = null;
 
 		if ( array() !== $sourceIds ) {
 			$result = $this->retrieval->retrieve(
@@ -193,6 +195,29 @@ final class ChatService {
 
 			$retrieved = $result->chunks;
 		}
+
+		/**
+		 * Fires after retrieval has run for a visitor's message.
+		 *
+		 * Knowledge-gap detection attaches here rather than to
+		 * `hiveclerk/chat/replied`, because this is the only point at
+		 * which the question and what searching for it found are both in
+		 * hand. Reconstructing them afterwards would mean two extra
+		 * queries per reply to answer a question that was already
+		 * answered here.
+		 *
+		 * Fired before the confidence check on purpose: a clerk that
+		 * answers anyway from a weak match still has the gap, and it is
+		 * the gap the operator most wants to know about.
+		 *
+		 * Nothing in the request path may depend on a listener.
+		 *
+		 * @param Agent                $agent        The clerk.
+		 * @param Conversation         $conversation The conversation.
+		 * @param string               $message      What the visitor asked.
+		 * @param RetrievalResult|null $result       What was found, or null when the clerk has no sources.
+		 */
+		do_action( 'hiveclerk/chat/retrieved', $agent, $conversation, $message, $result );
 
 		$confidence = $this->guardrails->checkConfidence( $agent, $retrieved, array() !== $sourceIds );
 

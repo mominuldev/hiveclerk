@@ -15,6 +15,7 @@ use Hiveclerk\Api\RestServer;
 use Hiveclerk\Core\Audit\AuditLogger;
 use Hiveclerk\Core\Capabilities\Capabilities;
 use Hiveclerk\Core\Container\Container;
+use Hiveclerk\Core\Licence\LicenceGate;
 use Hiveclerk\Core\Module\AbstractModule;
 use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Support\ClockInterface;
@@ -115,7 +116,8 @@ final class AgentsModule extends AbstractModule {
 				$c->get( ConversationRepositoryInterface::class ),
 				$c->get( KnowledgeSourceRepositoryInterface::class ),
 				$c->get( RateLimiter::class ),
-				$c->get( ClockInterface::class )
+				$c->get( ClockInterface::class ),
+				$c->get( LicenceGate::class )
 			)
 		);
 	}

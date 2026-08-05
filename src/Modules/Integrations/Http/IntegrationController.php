@@ -13,6 +13,8 @@ use Hiveclerk\Api\AbstractController;
 use Hiveclerk\Api\ErrorCode;
 use Hiveclerk\Api\Response\ApiResponse;
 use Hiveclerk\Core\Capabilities\Capabilities;
+use Hiveclerk\Core\Licence\Feature;
+use Hiveclerk\Core\Licence\LicenceGate;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Integration\CrmConnectorInterface;
 use Hiveclerk\Domain\Integration\FieldMap;
@@ -55,6 +57,7 @@ final class IntegrationController extends AbstractController {
 	 * @param FieldMapper                    $mapper       Source list.
 	 * @param OAuthService                   $oauth        Redirect flow.
 	 * @param AgentRepositoryInterface       $agents       Clerks, for their question keys.
+	 * @param LicenceGate                    $licence      Tier entitlements.
 	 */
 	public function __construct(
 		private readonly IntegrationService $service,
@@ -63,7 +66,8 @@ final class IntegrationController extends AbstractController {
 		private readonly ConnectorRegistry $connectors,
 		private readonly FieldMapper $mapper,
 		private readonly OAuthService $oauth,
-		private readonly AgentRepositoryInterface $agents
+		private readonly AgentRepositoryInterface $agents,
+		private readonly LicenceGate $licence
 	) {
 	}
 
@@ -254,6 +258,17 @@ final class IntegrationController extends AbstractController {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function connect( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		// FR-CRM-10. Gated on the connect rather than on the read: the
+		// grid still lists every connector on a free install, because
+		// seeing what is available is how somebody decides to buy it.
+		// Nothing already connected is disconnected when a licence
+		// lapses — the sync stops, the configuration stays.
+		$refusal = $this->licence->refusal( Feature::Crm );
+
+		if ( null !== $refusal ) {
+			return $refusal;
+		}
+
 		$connector = $this->connector( $request );
 
 		if ( $connector instanceof WP_Error ) {

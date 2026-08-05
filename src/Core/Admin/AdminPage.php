@@ -9,9 +9,13 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Core\Admin;
 
+use DateTimeZone;
+use Hiveclerk\Core\Branding\BrandingService;
 use Hiveclerk\Core\Capabilities\Capabilities;
 use Hiveclerk\Core\Capabilities\CapabilityManager;
+use Hiveclerk\Core\Licence\LicenceService;
 use Hiveclerk\Core\Settings\SettingsRepository;
+use Hiveclerk\Core\Support\ClockInterface;
 
 /**
  * Registers the admin menu and mounts the React SPA.
@@ -26,10 +30,16 @@ final class AdminPage {
 	 *
 	 * @param AssetManifest      $assets   Build manifest reader.
 	 * @param SettingsRepository $settings Settings.
+	 * @param BrandingService    $branding Branding, already reconciled with the licence.
+	 * @param LicenceService     $licences Licence state.
+	 * @param ClockInterface     $clock    Clock.
 	 */
 	public function __construct(
 		private readonly AssetManifest $assets,
-		private readonly SettingsRepository $settings
+		private readonly SettingsRepository $settings,
+		private readonly BrandingService $branding,
+		private readonly LicenceService $licences,
+		private readonly ClockInterface $clock
 	) {
 	}
 
@@ -209,38 +219,33 @@ final class AdminPage {
 				'email'  => $user->user_email,
 				'avatar' => get_avatar_url( $user->ID, array( 'size' => 64 ) ),
 			),
-			'branding'     => array(
-				'productName' => $this->productName(),
-				'whiteLabel'  => (bool) $this->settings->get( 'branding.white_label', false ),
-			),
+			'branding'     => $this->branding->current()->forAdmin(),
 			'appearance'   => array(
 				'theme' => (string) $this->settings->get( 'appearance.theme', 'auto' ),
 			),
-			'licence'      => array(
-				'tier'  => 'free',
-				'sites' => 1,
+			// The whole licence, not a tier string. The sidebar footer,
+			// the upgrade prompts and the gated screens all need to know
+			// which features are in force, and a first paint that only
+			// carried the tier name would make every one of them repeat
+			// the entitlement arithmetic in TypeScript.
+			'licence'      => $this->licences->current()->toArray(
+				$this->clock->now()->setTimezone( new DateTimeZone( 'UTC' ) )
 			),
 		);
 	}
 
 	/**
-	 * Product name, honouring white-label mode.
-	 *
-	 * @return string
-	 */
-	private function productName(): string {
-		$name = $this->settings->get( 'branding.product_name', 'Hiveclerk' );
-
-		return is_string( $name ) && '' !== $name ? $name : 'Hiveclerk';
-	}
-
-	/**
 	 * Menu label, honouring white-label mode.
+	 *
+	 * Resolved through BrandingService rather than read from settings, so
+	 * a Pro install that saved a replacement name does not get it in the
+	 * wp-admin menu — which is the one place a customer would see it
+	 * before the licence check ever ran.
 	 *
 	 * @return string
 	 */
 	private function menuLabel(): string {
-		return $this->productName();
+		return $this->branding->current()->productName;
 	}
 
 	/**

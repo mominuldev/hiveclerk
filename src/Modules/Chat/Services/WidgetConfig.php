@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace Hiveclerk\Modules\Chat\Services;
 
 use Hiveclerk\Domain\Agent\Agent;
+use Hiveclerk\Core\Branding\BrandingService;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Agent\PageContext;
 use Hiveclerk\Domain\Lead\LeadCapture;
@@ -35,10 +36,12 @@ final class WidgetConfig {
 	 *
 	 * @param AgentRepositoryInterface $agents   Clerk storage.
 	 * @param PageContextFactory       $pages    Describes the current page.
+	 * @param BrandingService          $branding Badge, already reconciled with the licence.
 	 */
 	public function __construct(
 		private readonly AgentRepositoryInterface $agents,
-		private readonly PageContextFactory $pages
+		private readonly PageContextFactory $pages,
+		private readonly BrandingService $branding
 	) {
 	}
 
@@ -107,10 +110,12 @@ final class WidgetConfig {
 					'subtitle' => $this->text( $widget, 'subtitle', 60 ) ?? '',
 				),
 				'locale'        => get_locale(),
-				'branding'      => array(
-					'show_badge' => (bool) ( $widget['show_badge'] ?? true ),
-					'label'      => 'Powered by Hiveclerk',
-				),
+				// Resolved centrally, not read off the clerk. Whether the
+				// badge may be hidden is a licensing question, and a
+				// per-clerk boolean saved on Pro would keep hiding it
+				// after the licence lapsed — on the customer's client's
+				// site, where nobody would notice.
+				'branding'      => $this->branding->current()->forWidget(),
 			),
 			'capabilities' => array(
 				// Streaming is advertised as available, not as working. The
