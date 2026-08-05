@@ -17,6 +17,13 @@ import { LeadTable } from '@/routes/leads/LeadTable';
 import { ScoringRules } from '@/routes/leads/ScoringRules';
 import { Playground } from '@/routes/knowledge/Playground';
 import { EmbeddingSettings } from '@/routes/knowledge/EmbeddingSettings';
+import { IntegrationsShell } from '@/routes/integrations/IntegrationsShell';
+import { Integrations } from '@/routes/integrations/Integrations';
+import { SyncLog } from '@/routes/integrations/SyncLog';
+import { EmailShell } from '@/routes/email/EmailShell';
+import { Sequences } from '@/routes/email/Sequences';
+import { SequenceBuilder } from '@/routes/email/SequenceBuilder';
+import { EmailLog } from '@/routes/email/EmailLog';
 
 /*
  * A hash router avoids rewrite rules and server configuration entirely,
@@ -41,12 +48,6 @@ const client = new QueryClient({
 });
 
 const SCAFFOLDED = [
-  {
-    path: 'integrations',
-    area: 'Integrations',
-    sprint: 'Sprint 8',
-    summary: 'FluentCRM, Groundhogg and HubSpot with field mapping and a sync log.',
-  },
   {
     path: 'workflows',
     area: 'Workflows',
@@ -83,6 +84,25 @@ export function App() {
               <Route path="table" element={<LeadTable />} />
               <Route path="scoring" element={<ScoringRules />} />
             </Route>
+            <Route path="integrations" element={<IntegrationsShell />}>
+              {/* Redirect rather than an index element, so the tab bar
+                  always has an active tab and a bookmarked /integrations
+                  still lands somewhere nameable. */}
+              <Route index element={<Navigate to="connectors" replace />} />
+              <Route path="connectors" element={<Integrations />} />
+              <Route path="log" element={<SyncLog />} />
+            </Route>
+
+            <Route path="email" element={<EmailShell />}>
+              <Route index element={<Navigate to="sequences" replace />} />
+              <Route path="sequences" element={<Sequences />} />
+              <Route path="log" element={<EmailLog />} />
+            </Route>
+            {/* Outside the shell: the builder is a full-screen task, and
+                a tab bar above it would offer to navigate away from
+                unsaved copy. */}
+            <Route path="email/sequences/:uuid" element={<SequenceBuilder />} />
+
             <Route path="knowledge" element={<KnowledgeShell />}>
               {/* Redirect rather than an index element, so the tab bar
                   always has an active tab and a bookmarked /knowledge

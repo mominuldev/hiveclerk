@@ -62,6 +62,73 @@ export function formatTimestamp(value: string): string {
 }
 
 /**
+ * How long ago, or how long until.
+ *
+ * Used where the exact instant is not the question — "last synced 4
+ * minutes ago" answers "is this working" and a UTC timestamp does not.
+ * Falls back to the absolute form past a week, because "38 days ago" is a
+ * number nobody converts back into a date correctly.
+ */
+export function relative(value: string | null): string {
+  if (!value) {
+    return '';
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  const seconds = Math.round((parsed.getTime() - Date.now()) / 1000);
+  const future = seconds > 0;
+  const magnitude = Math.abs(seconds);
+
+  if (magnitude > 604_800) {
+    return formatTimestamp(value);
+  }
+
+  const [amount, unit] =
+    magnitude < 60
+      ? [magnitude, 'second']
+      : magnitude < 3600
+        ? [Math.round(magnitude / 60), 'minute']
+        : magnitude < 86_400
+          ? [Math.round(magnitude / 3600), 'hour']
+          : [Math.round(magnitude / 86_400), 'day'];
+
+  const plural = amount === 1 ? unit : `${unit}s`;
+
+  return future ? `in ${amount} ${plural}` : `${amount} ${plural} ago`;
+}
+
+/**
+ * A delay in minutes, as an operator would say it.
+ *
+ * "2 days" rather than "2880 minutes". The sequence builder stores
+ * minutes because that is what a delay is; nobody reads one.
+ */
+export function formatDelay(minutes: number): string {
+  if (minutes <= 0) {
+    return 'immediately';
+  }
+
+  if (minutes < 60) {
+    return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+  }
+
+  if (minutes < 1440) {
+    const hours = Math.round((minutes / 60) * 10) / 10;
+
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+  }
+
+  const days = Math.round((minutes / 1440) * 10) / 10;
+
+  return `${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
+/**
  * A price per million tokens, as providers publish it.
  */
 export function formatPerMillion(input: number, output: number): string {

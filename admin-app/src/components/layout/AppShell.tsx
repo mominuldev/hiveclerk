@@ -20,6 +20,7 @@ const PAGES: Record<string, { title: string; subtitle: string }> = {
     subtitle: 'Everything visitors have said',
   },
   '/leads': { title: 'Leads', subtitle: 'Captured, scored and routed' },
+  '/email': { title: 'Email', subtitle: 'Follow-up that stops when they reply' },
   '/knowledge': {
     title: 'Knowledge',
     subtitle: 'What your clerks can answer from',

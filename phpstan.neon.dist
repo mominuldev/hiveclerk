@@ -18,6 +18,7 @@ parameters:
     scanFiles:
         - tools/phpstan/action-scheduler-stubs.php
         - tools/phpstan/woocommerce-stubs.php
+        - tools/phpstan/crm-stubs.php
 
     scanDirectories:
         - vendor

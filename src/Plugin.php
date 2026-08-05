@@ -104,6 +104,12 @@ final class Plugin {
 		// other way is one domain interface, which Leads rebinds here over
 		// the null object the core provider left in place.
 		$registry->add( new Modules\Leads\LeadsModule() );
+		// Integrations and Email after Leads: both listen to lead events
+		// and neither is ever called by the module that fires them, which
+		// is what lets a site filter either out and keep a working
+		// pipeline.
+		$registry->add( new Modules\Integrations\IntegrationsModule() );
+		$registry->add( new Modules\Email\EmailModule() );
 		// Agents last: the test console runs a clerk through Chat's prompt
 		// builder and guardrails, so both have to be bound before it asks
 		// the container for them.

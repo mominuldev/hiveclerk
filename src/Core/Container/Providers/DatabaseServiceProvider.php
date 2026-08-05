@@ -23,14 +23,28 @@ use Hiveclerk\Database\Migrations\M0009_ConversationSupervision;
 use Hiveclerk\Database\Migrations\M0010_LeadPipeline;
 use Hiveclerk\Database\Repositories\ActivityRepository;
 use Hiveclerk\Database\Repositories\AuditRepository;
+use Hiveclerk\Database\Repositories\EmailLogRepository;
+use Hiveclerk\Database\Repositories\EnrollmentRepository;
+use Hiveclerk\Database\Repositories\IntegrationLogRepository;
+use Hiveclerk\Database\Repositories\IntegrationRepository;
 use Hiveclerk\Database\Repositories\LeadRepository;
 use Hiveclerk\Database\Repositories\LeadStageRepository;
 use Hiveclerk\Database\Repositories\RateLimitRepository;
 use Hiveclerk\Database\Repositories\ScoreEventRepository;
+use Hiveclerk\Database\Repositories\SequenceRepository;
+use Hiveclerk\Database\Repositories\SequenceStepRepository;
+use Hiveclerk\Database\Repositories\SuppressionRepository;
 use Hiveclerk\Database\Repositories\UsageRepository;
 use Hiveclerk\Database\Repositories\VisitorRepository;
 use Hiveclerk\Core\Support\RateLimitStoreInterface;
 use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
+use Hiveclerk\Domain\Email\EmailLogRepositoryInterface;
+use Hiveclerk\Domain\Email\EnrollmentRepositoryInterface;
+use Hiveclerk\Domain\Email\SequenceRepositoryInterface;
+use Hiveclerk\Domain\Email\SequenceStepRepositoryInterface;
+use Hiveclerk\Domain\Email\SuppressionRepositoryInterface;
+use Hiveclerk\Domain\Integration\IntegrationRepositoryInterface;
+use Hiveclerk\Domain\Integration\SyncLogRepositoryInterface;
 use Hiveclerk\Domain\Lead\ActivityRepositoryInterface;
 use Hiveclerk\Domain\Lead\LeadRepositoryInterface;
 use Hiveclerk\Domain\Lead\LeadStageRepositoryInterface;
@@ -158,6 +172,41 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		$container->singleton(
 			VisitorRepositoryInterface::class,
 			static fn (): VisitorRepositoryInterface => new VisitorRepository()
+		);
+
+		$container->singleton(
+			IntegrationRepositoryInterface::class,
+			static fn (): IntegrationRepositoryInterface => new IntegrationRepository()
+		);
+
+		$container->singleton(
+			SyncLogRepositoryInterface::class,
+			static fn (): SyncLogRepositoryInterface => new IntegrationLogRepository()
+		);
+
+		$container->singleton(
+			SequenceRepositoryInterface::class,
+			static fn (): SequenceRepositoryInterface => new SequenceRepository()
+		);
+
+		$container->singleton(
+			SequenceStepRepositoryInterface::class,
+			static fn (): SequenceStepRepositoryInterface => new SequenceStepRepository()
+		);
+
+		$container->singleton(
+			EnrollmentRepositoryInterface::class,
+			static fn (): EnrollmentRepositoryInterface => new EnrollmentRepository()
+		);
+
+		$container->singleton(
+			EmailLogRepositoryInterface::class,
+			static fn (): EmailLogRepositoryInterface => new EmailLogRepository()
+		);
+
+		$container->singleton(
+			SuppressionRepositoryInterface::class,
+			static fn (): SuppressionRepositoryInterface => new SuppressionRepository()
 		);
 
 		$container->singleton(

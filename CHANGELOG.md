@@ -6,6 +6,308 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Sprint 8 — CRM and email
+
+**Goal:** leads leave the building.
+
+#### Added
+
+- **The Integrations module** (`src/Modules/Integrations/`) — a connector
+  contract any integration implements (FR-CRM-01), a registry behind the
+  `hiveclerk/crm/connectors` filter, `FieldMapper` for the mapping
+  (FR-CRM-07), `SyncService` for what gets pushed and when, `RetryPolicy`
+  for the backoff (FR-CRM-08), `OAuthService` for the redirect flow, and
+  `CredentialStore` for the one place a token is decrypted.
+- **Five connectors.** FluentCRM (FR-CRM-02) and Groundhogg (FR-CRM-03)
+  in-process, HubSpot over OAuth 2.0 (FR-CRM-04), and a signed outbound
+  webhook plus Slack as the universal fallback (FR-CRM-09). The webhook
+  is the highest-leverage one: every CRM this product will never write an
+  adapter for is reachable through Zapier, Make, or twenty lines of PHP
+  on the customer's own server.
+- **The Email module** (`src/Modules/Email/`) — `SequenceService` for
+  building them (FR-EML-01), `EnrolmentService` for the four triggers and
+  the exit conditions (FR-EML-02, 04), `SequenceEngine` for the tick,
+  `EmailSender` over `wp_mail` with a per-site hourly ceiling (FR-EML-05),
+  `SuppressionList` and `UnsubscribeTokens` for one-click unsubscribe
+  (FR-EML-06), and `CopyGenerator` for AI drafting behind a human gate
+  (FR-EML-03).
+- **The approval gate is a property of the step, not of the screen.** An
+  AI-drafted email with no `approved_at` does not send, does not let its
+  sequence activate, and holds its enrolment rather than being skipped —
+  enforced in `SequenceStep::isSendable()` and checked by the engine on
+  every tick. A gate that lived only in the UI is a gate a direct API
+  call walks around.
+- **Both `List-Unsubscribe` forms.** `mailto:` is what the old RFC
+  specifies and several clients still use; `https:` plus
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` is what Gmail and
+  Yahoo have required from bulk senders since 2024. Neither alone
+  satisfies both worlds, so both go out — plus a visible link in the
+  footer, appended by the renderer rather than left to a template an
+  operator can forget.
+- **The integrations grid** (D11 §8) with the connect flow, the field
+  mapping panel and the sync log; the sequence list, the builder with its
+  per-step editor and preview, and the send log. Two new sidebar
+  sections; the Integrations placeholder is gone.
+- REST: 19 new routes — the `/admin/integrations` surface, the
+  `/admin/email` surface, and `/public/unsubscribe`.
+
+#### Fixed
+
+- **The retry schedule was two and a half hours, not fifteen.** D9 §4
+  lists five intervals — 1 m, 5 m, 30 m, 2 h, 12 h — and they are the
+  waits *before* each retry, so a lead needs six attempts to use all of
+  them. `maxAttempts()` returned five, which made the 12-hour entry
+  unreachable and gave up before dinner on a lead that failed at 18:00.
+  Nothing would ever have reported it: the log still showed attempts,
+  retries and a plausible give-up. Caught by a test that asserted the
+  whole schedule outlasts a working day.
+
+#### Security
+
+- **A connection's credentials are not on its entity.** `Integration` has
+  nowhere to put a token; secrets go in and out through two repository
+  methods. Everything that renders an integration — the grid, the mapping
+  screen, the log — takes an `Integration`, so a presenter cannot leak a
+  token it was never given. Structural rather than remembered.
+- **`ConnectorCredentials::__sleep()` throws**, as `Ai\Credentials` does.
+  A queued job carries an integration id and reads the token back out of
+  storage, which is a deliberate extra round trip: a serialised access
+  token in a job payload sits in the database in plaintext for as long as
+  the queue is backed up.
+- **The OAuth callback requires `manage_integrations`.** It is the request
+  that binds a CRM account to this site — leaving it open, as "it only
+  carries a code the provider issued" would suggest, is how somebody
+  else's HubSpot portal comes to receive the customer's leads. The
+  capability check and the single-use state check are two independent
+  locks and the flow passes through both.
+- **The state value is a short-lived server-side transient, not a nonce.**
+  A nonce is bound to the WordPress user and survives twelve hours; this
+  has to survive a round trip through a third party and then never be
+  accepted again. It is deleted before the code is exchanged.
+- **Webhook signatures cover a timestamp.** Without one a captured
+  request can be replayed forever. `X-HVC-Signature` is an HMAC over
+  `<timestamp>.<raw body>`, computed on the exact bytes sent — a
+  re-encoded copy is how this breaks silently, so the dispatcher encodes
+  once and signs what it encoded.
+- **An unsigned endpoint gets no signature header at all**, rather than
+  `sha256=` followed by an HMAC of the empty secret, which would look
+  like a signature and verify against nothing.
+- **Every customer-supplied URL goes through `OutboundUrlGuard`** — the
+  same check the crawler uses — and only `https://` is accepted.
+  Redirects are not followed: a 302 from an approved endpoint to one the
+  guard would have refused is the simplest way around a pre-flight check.
+- **The unsubscribe token is an HMAC over the address hash.** A link
+  carrying a plain address lets anybody unsubscribe anybody by editing a
+  URL, and puts a real address into every proxy log it passes through.
+  Verified in constant time; the endpoint answers identically whether or
+  not the address was already suppressed.
+- **The email body is filtered at send, against a mail-client allowlist**
+  — not at save, where `wp_kses` would silently delete a table an
+  operator had a reason for and they would find out weeks later from a
+  recipient.
+
+#### Decisions worth recording
+
+- **Credentials are a per-call parameter, not connector state.** D9 §5
+  sketches a stateful `authenticate()` then `pushContact()`. Connectors
+  here are container singletons shared across a request, and one that
+  remembers who it authenticated as is one `$this->token` away from
+  pushing site A's lead into site B's CRM on a multisite install — a bug
+  that is invisible until it is a data-protection incident. This is the
+  only place the implementation deviates from the specification.
+- **`SyncResult` carries `retryable` separately from `ok`.** A 429 means
+  try again in five minutes; a 400 saying "that is not a valid address"
+  means try again forever and never succeed. Only the connector knows
+  which it just received, so it says so rather than leaving the policy to
+  infer it from a status code it would have to special-case per provider.
+- **A 409 from HubSpot is an update, not a failure.** It answers a create
+  for an address it already holds with the existing id in prose. Treating
+  it as an error would fail the second push of every lead — which happens
+  the moment a score moves — and land it red in the log.
+- **A blank field is omitted from a payload, never sent empty.** Every
+  connector upserts, so every push is also an update, and `company => ""`
+  overwrites a company name a salesperson typed in by hand this morning.
+- **The default sync trigger is Qualified, not Captured.** A CRM that
+  receives every anonymous visitor who typed an address into a chat
+  window becomes a list nobody trusts — and most of the products this
+  pushes into charge per contact.
+- **The transcript is opt-in and truncated from the front.** It is the
+  most sensitive thing this plugin holds; copying it into a third-party
+  SaaS is a decision the customer makes rather than a default they
+  discover. Truncating from the front keeps the end, which is where the
+  commitment is.
+- **Disconnecting deletes nothing.** It clears the credentials and keeps
+  the row, the mapping and the history, because all three are work the
+  operator did and none is a secret. Somebody rotating a private app
+  reconnects within a minute.
+- **The sequence tick is scheduled at boot on every request.** Both queue
+  drivers make `scheduleRecurring()` idempotent. Scheduling on activation
+  instead means a site that upgraded into this version never gets a tick,
+  and the symptom is a sequence that enrols people and never sends — the
+  hardest kind of bug to notice, because everything looks configured.
+- **Enrolment never sends inline, even at a zero delay.** A lead captured
+  mid-conversation would otherwise receive a follow-up while they are
+  still typing, which reads as surveillance rather than service.
+- **A reply always exits a sequence and it is not configurable.** A
+  follow-up that keeps sending after the person answered is the single
+  most damaging thing an email feature can do, and it is visible to the
+  recipient as evidence that nobody is reading.
+- **An unapproved draft holds its enrolment rather than being skipped.**
+  Skipping would send email three to somebody who never received email
+  two, and nothing would report it.
+- **Nobody is enrolled twice in the same sequence.** Enforced by a unique
+  index and checked before the insert. The cost is that a completed
+  sequence cannot be run again for the same person — correct for
+  follow-up, wrong for a newsletter, and this product has no newsletters.
+- **An unknown merge tag renders empty, never as itself.** A typo must
+  not put `{{fist_name}}` in front of a customer's prospect. Fallbacks
+  are part of the tag — `{{first_name|there}}` — because without them
+  every template either greets somebody by name or produces "Hi ,".
+- **The subject line is not HTML-escaped and the body is.** A company
+  called "Smith & Sons" would otherwise arrive as `Smith &amp; Sons` in
+  every inbox that received it.
+- **The AI draft is written with merge tags rather than a real name.**
+  The same words go to everybody the sequence enrols; generating per
+  recipient would be a bill nobody agreed to and a drafting tool that is
+  not one.
+- **The preview renders against an invented lead.** Taking the most
+  recent real one would put a named individual's details on screen every
+  time somebody opened the editor.
+- **The send log says "handed to the mailer", never "delivered".** The
+  site's SMTP plugin, its provider and the recipient's server all sit
+  between us and the truth. A log that claimed delivery it cannot observe
+  is a log nobody believes the second time they check it.
+- **Suppressed sends get a log row.** "We did not email this person
+  because they unsubscribed in March" is the answer to a complaint, and
+  it only exists if the decision was written down at the time.
+- **The hourly ceiling is counted from the log, not a counter.** A
+  counter and a log that disagree is a bug nobody finds until a customer's
+  host suspends them for volume.
+- **The "214 contacts" figure comes from our own log.** A CRM's own total
+  includes contacts from every other source the customer uses; the number
+  that means something here is how many *we* sent.
+- **No migration this sprint.** Every table these two modules need has
+  existed since `M0005` and `M0006`, and the columns were the right ones.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, driven with Playwright and
+`wp eval-file` against the real site.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **457**, 1,853 assertions (59 new) |
+| SEC-04 | **79/79 routes gated**, including the 19 added here |
+| Admin bundle | **162.15 KB** gzipped (budget 350; was 153.42) |
+| Widget bundle | **16.74 KB** gzipped (budget 40; unchanged) |
+
+- **The whole email path was driven end to end against the database.**
+  Activation refused an empty sequence, then refused one holding an
+  unapproved AI draft *and named the step*. After approval it went live;
+  editing the approved copy cleared `approved_at` and the blocker
+  reappeared. A lead was enrolled, a second enrolment refused, the tick
+  sent exactly one email carrying both `List-Unsubscribe` headers and the
+  footer link, the enrolment advanced to step 2 scheduled 1,440 minutes
+  out, and a second tick sent nothing.
+- **The unsubscribe round trip was exercised.** The issued token verified
+  against the address hash; a token with its last character changed was
+  refused; and suppressing the hash moved the still-active enrolment to
+  `exited` with reason `unsubscribed` and blocked further sends.
+- **The CRM path was driven without sending anybody's data anywhere.**
+  The only host pointed at was one that cannot resolve, which exercised
+  the transport-failure branch: `retryable=true`, one `retrying` row in
+  `integration_log`, next attempt stamped exactly 60 seconds out.
+- **The credential storage was inspected in the database.** The
+  `credentials` column held `v1:` ciphertext, the plaintext URL did not
+  appear in it, the entity has no credentials property, and the
+  serialised entity did not contain the secret.
+- **The SSRF guard was measured on the three addresses that matter.**
+  `127.0.0.1`, `169.254.169.254` and `10.0.0.5` were all blocked over
+  https.
+- **An unrecognised mapping source was dropped on save** — five submitted,
+  four stored.
+- **Trigger evaluation was checked against a real lead.** Score 72 with a
+  Qualified trigger: captured `false`, qualified `true`, manual `false`.
+  A phone-only lead was refused on every trigger, because every connector
+  here identifies a contact by address.
+- **Both themes were rendered** for the connectors grid and the sequence
+  list.
+
+#### Not delivered this sprint
+
+- **Pro-tier gating (FR-CRM-10, FR-EML-08).** Both surfaces are gated on
+  capabilities only. `LicenceService` arrives in Sprint 9 and there is no
+  licence to ask; the descriptors already carry `is_pro` and the grid
+  already renders the badge, so the gate is one call away from existing.
+  Until then a free install can connect a CRM.
+- **Zoho and Salesforce (FR-CRM-05, 06).** Both are P1 and both are
+  another OAuth application each. `OAuthProviderInterface` is the seam
+  they slot into.
+- **Open and click tracking (FR-EML-07).** `opened_at` and `clicked_at`
+  have existed since `M0005` and are still null. Opens need a tracking
+  pixel and clicks need rewritten links — both are decisions about a
+  customer's relationship with their own recipients rather than plumbing,
+  and neither belongs in a sprint that was already over capacity. The UI
+  shows no metric rather than a 0% that reads as nobody reading anything.
+- **The conversation-abandoned trigger.** `TriggerType` carries it and
+  `abandonAfterMinutes()` is read, but nothing detects abandonment — that
+  needs a sweep job over open conversations, which is the same shape as
+  the analytics rollup in Sprint 9 and belongs beside it.
+- **`POST /admin/leads/{id}/sync`**, carried over from Sprint 7.
+  `SyncService::push()` exists and is what the route would call; the
+  route and the button on the lead drawer do not.
+- **Step reordering in the builder.** `SequenceStepRepository::reorder()`
+  works and is used when a step is deleted, but there is no drag handle.
+  Steps are added at the end.
+
+#### Known gaps
+
+- **No connector has been exercised against a live account.** FluentCRM
+  and Groundhogg are absent from this machine, so both report themselves
+  unavailable and neither `createOrUpdate()` nor `new Contact()` has ever
+  been called for real. The HubSpot adapter has never held a token: the
+  authorise URL, the code exchange, the refresh and the 409-to-PATCH path
+  are written against the documented API and are unverified. This is the
+  largest gap in the sprint and it is not closeable without accounts.
+- **The local connectors are written defensively rather than tested.**
+  Every call is `class_exists`-guarded and wrapped in `Throwable`, which
+  means a version whose API differs degrades to a logged failure rather
+  than a fatal — but *which* versions differ is unmeasured.
+- **The webhook has never been received by anything.** Signing is unit
+  tested against a hand-computed HMAC, and delivery was exercised only
+  against a host that does not resolve. No receiver has verified a
+  signature this code produced.
+- **AI drafting has never run against a live provider.** The prompt, the
+  fencing, the JSON parsing and the `wp_kses` pass are written and the
+  refusal path returns 502, but no completion has been billed through it.
+  What a real model returns for a real goal is unmeasured.
+- **The engine has not been run at scale.** The batch is 25 and the job
+  re-enqueues while work remains, but the largest backlog ever drained
+  here was one enrolment. Whether 25 `wp_mail()` calls fit inside twenty
+  seconds depends entirely on the site's relay, and no site with a real
+  one has been near this.
+- **A paused sequence's due times drift.** Resuming sends everything that
+  fell due while it was paused on the next tick, all at once, up to the
+  hourly ceiling. For a two-day pause on a sequence with day-long delays
+  that is a burst, and there is no re-spacing.
+- **`statsFor()` joins the log to enrolments on every sequence row.** The
+  list screen calls it once per sequence. At a dozen sequences that is
+  twelve grouped queries on one page load; it wants a single query keyed
+  by sequence and has not had one.
+- **Deleting a sequence closes at most 500 enrolments in one pass.**
+  Anything past that stays `active` — it stops sending either way,
+  because the engine checks the sequence first, but the rows keep being
+  loaded by the due-work query. A site with more than 500 people in one
+  sequence has to delete it twice. `enrolled_count` is never decremented
+  at all; it is a running total of who was ever enrolled, which is what
+  the list screen wants, but the name does not say so.
+- **The unsubscribe page is not translated into the visitor's locale.**
+  It renders in the site's language, which is right for most installs and
+  wrong for a multilingual one.
+
+---
+
 ### Sprint 7 — Leads and scoring
 
 **Goal:** the revenue mechanism.
