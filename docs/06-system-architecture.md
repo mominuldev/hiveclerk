@@ -360,7 +360,7 @@ flowchart LR
     Sources --> EX["Extractor<br/>per source type"]
     EX --> NM["Normalise<br/>strip chrome, HTML→text,<br/>preserve heading path"]
     NM --> DOC[("documents")]
-    DOC --> CK["Chunker<br/>~800 tokens, 15% overlap,<br/>heading-aware splits"]
+    DOC --> CK["Chunker<br/>~200 token target / 800 ceiling,<br/>15% overlap, heading-aware splits"]
     CK --> CHK[("chunks")]
     CHK --> HASH{"content_hash<br/>changed?"}
     HASH -->|no| SKIP["Skip — reuse embedding"]

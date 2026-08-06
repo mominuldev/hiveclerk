@@ -337,6 +337,101 @@ final class ChunkerServiceTest extends TestCase {
 	/**
 	 * A document with several headed sections and enough text to split.
 	 *
+	// ------------------------------------------------- target versus ceiling
+
+	/**
+	 * The M1 regression, in one test.
+	 *
+	 * A page whose only heading is its own title is a single section, so
+	 * before the target existed the whole page packed into one chunk of up
+	 * to 800 tokens and a two-sentence fact competed with everything else
+	 * on it. Measured at recall@5 0.889 flat against 0.944 for the same
+	 * prose under sub-headings.
+	 */
+	public function testAPageWithNoSubHeadingsIsSplitAtTheTarget(): void {
+		$document = $this->flatPage();
+
+		$atCeiling = $this->chunker->chunk( $document, 1, 1, new ChunkOptions( 800, 0.0, 48, 800 ) );
+		$atTarget  = $this->chunker->chunk( $document, 1, 1, new ChunkOptions( 800, 0.0, 48, 200 ) );
+
+		$this->assertCount( 1, $atCeiling, 'The old behaviour was one chunk for the whole page.' );
+		$this->assertGreaterThan(
+			1,
+			count( $atTarget ),
+			'A flat page must be divided by the target, or the fix does nothing.'
+		);
+	}
+
+	/**
+	 * The other half of the same guarantee.
+	 *
+	 * Sections already smaller than the target must chunk identically
+	 * whatever the target is, because that content already scores 0.944
+	 * and this change must not move it.
+	 */
+	public function testSubHeadedContentIsUnaffectedByTheTarget(): void {
+		$document = $this->longDocument();
+
+		$atCeiling = $this->chunker->chunk( $document, 1, 1, new ChunkOptions( 800, 0.0, 48, 800 ) );
+		$atTarget  = $this->chunker->chunk( $document, 1, 1, new ChunkOptions( 800, 0.0, 48, 200 ) );
+
+		$this->assertSame(
+			array_map( static fn ( Chunk $c ): string => $c->content, $atCeiling ),
+			array_map( static fn ( Chunk $c ): string => $c->content, $atTarget ),
+			'Content under sub-headings must not be re-cut by the target.'
+		);
+	}
+
+	public function testASentenceOverTheTargetIsNotCutUpToReachIt(): void {
+		// One sentence, no internal boundary, comfortably over the target
+		// and well under the ceiling. Cutting it would be cutting mid-
+		// thought to save tokens nobody is short of.
+		$document = NormalisedText::fromPlainText( trim( str_repeat( 'word ', 200 ) ) . '.' );
+
+		$chunks = $this->chunker->chunk( $document, 1, 1, new ChunkOptions( 800, 0.0, 48, 200 ) );
+
+		$this->assertCount( 1, $chunks );
+		$this->assertSame( $document->text, $chunks[0]->content );
+	}
+
+	public function testTheTargetNeverExceedsTheCeiling(): void {
+		// A source configured with a small chunk size must not be handed a
+		// target above it: a target larger than the size a chunk may reach
+		// is not a target.
+		$this->assertSame( 100, ( new ChunkOptions( 100, 0.15, 48, 500 ) )->targetTokens );
+		$this->assertSame( ChunkOptions::DEFAULT_TARGET_TOKENS, ( new ChunkOptions() )->targetTokens );
+	}
+
+	public function testOverlapIsAFractionOfTheTargetNotTheCeiling(): void {
+		// 15% of the 800 ceiling is 120 tokens carried into a 200-token
+		// chunk — more than half of it — and the packer would stop
+		// advancing.
+		$this->assertSame( 30, ( new ChunkOptions( 800, 0.15, 48, 200 ) )->overlapTokens() );
+	}
+
+	/**
+	 * A page carrying no sub-headings, which is most pages.
+	 *
+	 * Every block shares one heading path — the post title — exactly as
+	 * WpContentExtractor produces for a page with no h2s.
+	 *
+	 * @return NormalisedText
+	 */
+	private function flatPage(): NormalisedText {
+		$blocks = array();
+
+		for ( $i = 1; $i <= 12; $i++ ) {
+			$blocks[] = new TextBlock(
+				"Paragraph {$i} of the delivery page. It explains one part of the policy in "
+					. 'enough words that the chunker has something to divide, and it ends here.',
+				array( 'Delivery and shipping' )
+			);
+		}
+
+		return NormalisedText::fromBlocks( $blocks );
+	}
+
+	/**
 	 * @return NormalisedText
 	 */
 	private function longDocument(): NormalisedText {

@@ -24,8 +24,30 @@
  * resulting figure should still be read as better than a probe run and
  * weaker than a measurement against a real shop.
  *
+ * ## Two modes
+ *
+ *   wp eval-file tools/eval/seed-corpus.php          — sub-headings as real h2
+ *   wp eval-file tools/eval/seed-corpus.php flat     — same prose, no headings
+ *
+ * `flat` exists because the difference between the two *is* a measurement.
+ * The chunker never merges across a heading, so the structured form breaks
+ * each page into five or six chunks and the flat form leaves it as one or
+ * two. Same words, same order, same everything else — which makes the pair
+ * the only clean way to see what chunk size alone does to recall, and the
+ * evidence `ChunkOptions::DEFAULT_TARGET_TOKENS` was chosen from.
+ *
+ * Flat keeps the heading *words* as ordinary lines and drops only the
+ * markup. Deleting them outright would remove vocabulary as well as
+ * structure, and then the comparison would measure two things at once.
+ *
  * @package Hiveclerk
  */
+
+$hvc_flat = in_array( 'flat', isset( $args ) && is_array( $args ) ? $args : array(), true );
+
+echo $hvc_flat
+	? "Seeding FLAT corpus — heading markup removed, prose unchanged.\n\n"
+	: "Seeding STRUCTURED corpus — '## ' becomes real h2 elements.\n\n";
 
 $hvc_pages = array(
 
@@ -320,8 +342,15 @@ foreach ( $hvc_pages as $hvc_title => $hvc_body ) {
 			// across a heading, so this is what turns a flat page into one
 			// chunk per section — and it is the structure every real business
 			// page has and the first version of this corpus did not.
+			//
+			// In flat mode the same markers lose their markup and keep their
+			// words, which is the control this is measured against.
 			'post_content' => wpautop(
-				(string) preg_replace( '/^## (.+)$/m', '</p><h2>$1</h2><p>', $hvc_body )
+				(string) preg_replace(
+					'/^## (.+)$/m',
+					$hvc_flat ? '$1' : '</p><h2>$1</h2><p>',
+					$hvc_body
+				)
 			),
 		),
 		true

@@ -33,6 +33,12 @@ use Hiveclerk\Modules\KnowledgeBase\Text\TokenEstimator;
  *    spanning a boundary is retrievable from either side. Carrying the
  *    tail of one section into an unrelated one just adds noise to the
  *    second chunk's vector.
+ * 4. **Aim for the target, never exceed the ceiling.** A chunk is
+ *    retrieved whole, so its size decides how much unrelated text a
+ *    visitor's question has to compete with. `maxTokens` is what the
+ *    embedding endpoint accepts; `targetTokens` is what retrieves well,
+ *    and packing to the former is what made a flat page score 0.889
+ *    where the same prose under sub-headings scored 0.944.
  *
  * Everything works on byte offsets into the assembled document, so every
  * chunk is a literal substring of it. That is what makes char_start and
@@ -155,7 +161,15 @@ final class ChunkerService {
 			// Flush before adding, not after. Adding first and checking
 			// afterwards produces chunks one unit over budget, which for a
 			// long paragraph is a long way over.
-			if ( array() !== $pending && $budget + $cost > $options->maxTokens ) {
+			//
+			// Against the target, not the ceiling: the ceiling is what an
+			// embedding endpoint accepts, and packing to it buries a
+			// two-sentence fact inside eight hundred tokens of everything
+			// else on the page. A single unit larger than the target still
+			// passes through whole — units() has already guaranteed it is
+			// under the ceiling, and there is no boundary left inside it
+			// worth cutting on.
+			if ( array() !== $pending && $budget + $cost > $options->targetTokens ) {
 				$chunks[] = $this->joinSpans( $pending, $path );
 				$pending  = $this->overlapFrom( $document, $pending, $options );
 				$budget   = $this->costOfAll( $document, $pending );
@@ -177,10 +191,17 @@ final class ChunkerService {
 	 * Break a section's spans down until every unit fits the budget.
 	 *
 	 * Paragraphs first, since they are the boundary a reader would pick.
-	 * A paragraph over budget is split at sentence ends, and a sentence
-	 * over budget — a minified script that survived extraction, a table
-	 * flattened into one line — is cut at a fixed width, because at that
-	 * point there is no boundary left to respect.
+	 * A paragraph over the *target* is split at sentence ends, because a
+	 * wall-of-text page with no headings and no paragraph breaks is
+	 * exactly the shape that retrieves worst and sentences are the only
+	 * boundary it offers. A sentence over the *ceiling* — a minified
+	 * script that survived extraction, a table flattened into one line —
+	 * is cut at a fixed width, because at that point there is no boundary
+	 * left to respect.
+	 *
+	 * The two thresholds are deliberately different. Splitting sentences
+	 * at the target as well would cut mid-thought to save a few tokens; a
+	 * sentence is a unit whether or not it is a convenient size.
 	 *
 	 * @param NormalisedText       $document Document.
 	 * @param array<int, TextSpan> $section  Spans.
@@ -191,7 +212,7 @@ final class ChunkerService {
 		$units = array();
 
 		foreach ( $section as $span ) {
-			if ( $this->cost( $document, $span ) <= $options->maxTokens ) {
+			if ( $this->cost( $document, $span ) <= $options->targetTokens ) {
 				$units[] = $span;
 				continue;
 			}

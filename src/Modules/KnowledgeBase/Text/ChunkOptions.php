@@ -22,6 +22,25 @@ final class ChunkOptions {
 	public const DEFAULT_OVERLAP    = 0.15;
 
 	/**
+	 * Chunk size to aim for, as opposed to the size never to exceed.
+	 *
+	 * These are two different numbers and conflating them cost the M1
+	 * recall gate. 800 is an *embedding* limit — it is about what the
+	 * provider's endpoint accepts. Retrieval wants something much smaller,
+	 * because a chunk is retrieved whole: a page with five topics packed
+	 * into one 800-token chunk has one vector that is the average of five
+	 * things and a close match for none of them.
+	 *
+	 * Measured, not guessed. The same twelve pages of prose score
+	 * recall@5 0.889 when each is a single chunk and 0.944 when sub-
+	 * headings break them into five, and the only difference is where the
+	 * boundaries fall. A page that happens to carry `h2`s got the good
+	 * number for free; every flat page got the bad one. This is the
+	 * boundary for pages that do not carry their own.
+	 */
+	public const DEFAULT_TARGET_TOKENS = 200;
+
+	/**
 	 * Smallest chunk worth storing on its own, in tokens.
 	 *
 	 * A 20-token trailing chunk is a sentence fragment with a vector of
@@ -42,17 +61,38 @@ final class ChunkOptions {
 	public const ABSOLUTE_MAX_TOKENS = 4000;
 
 	/**
+	 * Size to aim for when packing units into a chunk.
+	 *
+	 * Not promoted, because it is clamped against `$maxTokens` and a
+	 * promoted property would have to trust what it was handed.
+	 *
+	 * @var int
+	 */
+	public readonly int $targetTokens;
+
+	/**
 	 * Construct.
 	 *
-	 * @param int   $maxTokens Target chunk size.
-	 * @param float $overlap   Fraction of a chunk repeated in the next.
-	 * @param int   $minTokens Below this, a trailing chunk is merged back.
+	 * @param int      $maxTokens    Ceiling a chunk may never exceed.
+	 * @param float    $overlap      Fraction of a chunk repeated in the next.
+	 * @param int      $minTokens    Below this, a trailing chunk is merged back.
+	 * @param int|null $targetTokens Size to aim for; defaults to the smaller
+	 *                               of DEFAULT_TARGET_TOKENS and the ceiling.
 	 */
 	public function __construct(
 		public readonly int $maxTokens = self::DEFAULT_MAX_TOKENS,
 		public readonly float $overlap = self::DEFAULT_OVERLAP,
 		public readonly int $minTokens = self::DEFAULT_MIN_TOKENS,
+		?int $targetTokens = null,
 	) {
+		// Clamped rather than validated. The ceiling arrives from stored
+		// source configuration and can legitimately be below the default
+		// target, at which point the target is simply the ceiling — a
+		// target above the size a chunk may reach is not a target.
+		$this->targetTokens = max(
+			1,
+			min( $maxTokens, $targetTokens ?? self::DEFAULT_TARGET_TOKENS )
+		);
 	}
 
 	/**
@@ -82,7 +122,16 @@ final class ChunkOptions {
 		// the embedding bill and the storage for no measured gain.
 		$overlap = max( 0.0, min( 0.5, $overlap ) );
 
-		return new self( $max, $overlap, min( self::DEFAULT_MIN_TOKENS, (int) floor( $max / 4 ) ) );
+		$target = isset( $config['chunk_target'] ) && is_numeric( $config['chunk_target'] )
+			? (int) $config['chunk_target']
+			: null;
+
+		return new self(
+			$max,
+			$overlap,
+			min( self::DEFAULT_MIN_TOKENS, (int) floor( $max / 4 ) ),
+			$target
+		);
 	}
 
 	/**
@@ -91,6 +140,10 @@ final class ChunkOptions {
 	 * @return int
 	 */
 	public function overlapTokens(): int {
-		return (int) floor( $this->maxTokens * $this->overlap );
+		// Against the target rather than the ceiling. Overlap is a fraction
+		// of a chunk, and chunks are now target-sized — 15% of 800 is 120
+		// tokens carried into a 200-token chunk, which is more than half of
+		// it and would stop the packer advancing.
+		return (int) floor( $this->targetTokens * $this->overlap );
 	}
 }

@@ -6,6 +6,186 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### The chunker had one size where it needed two
+
+**Goal:** fix the weakness the M1 measurement exposed. 0.944 was the number
+for content carrying sub-headings; the same prose flat scored 0.889, and
+most real pages are flat. Banking the good number and shipping the bad
+behaviour was the option this entry exists to avoid.
+
+#### The confusion, and it was in one constant
+
+`maxTokens` was doing two unrelated jobs. 800 tokens is an **embedding**
+limit — it describes what a provider's endpoint accepts. It was also being
+used as the packing target, which made it a claim about **retrieval**, and
+as a retrieval claim it is simply wrong: a chunk is retrieved whole, so a
+page with five topics packed into one 800-token chunk has a single vector
+that is the average of five things and a close match for none of them.
+
+A page with `h2`s escaped this by accident — the chunker has never merged
+across a heading, so headings forced small chunks and small chunks retrieve
+well. Pages without them got one vector for the whole page. The product was
+therefore quietly much better at answering from sites that happened to be
+structured, and nothing anywhere said so.
+
+`targetTokens` now says what to aim for and `maxTokens` says what never to
+exceed. A unit larger than the target still passes through whole, because
+by then `units()` has already established there is no boundary left inside
+it worth cutting on.
+
+#### Measured, on the flat corpus
+
+The `flat` mode added to `seed-corpus.php` seeds the same twelve pages with
+the heading *markup* removed and the heading *words* kept — deleting them
+would remove vocabulary as well as structure, and the comparison would then
+be measuring two things at once.
+
+| Chunk target | Chunks | recall@5 | MRR |
+|---|---|---|---|
+| 800 (the old behaviour) | 13 | 0.889 | 0.793 |
+| 400 | 13 | 0.889 | 0.784 |
+| **200 (now the default)** | **24** | **0.926** | **0.821** |
+| 128 | 34 | 0.741 | 0.625 |
+
+The 800 row reproduces the previously recorded 0.889 exactly, which is what
+makes the rest of the column worth reading. 400 changes nothing because no
+page in the corpus reaches it. 200 clears the M1 floor on flat content.
+
+**128 is much worse, and the reason is not established.** The plausible
+account is that chunks that small lose to the 145 chunks of project
+documentation sharing the index — a short chunk has a thin vector and there
+are more competitors — but that is a hypothesis and it was not tested. It
+is recorded because a sharp cliff one step below the chosen value is a
+thing a reader deciding whether to trust this constant should know about.
+
+#### Verified
+
+- **Sub-headed content is not re-cut.** The structured corpus produces 62
+  chunks averaging 51 tokens both before and after the change — identical,
+  because every section was already below the target. A unit test asserts
+  the chunk contents are the same at target 200 and at target 800, so the
+  0.944 result cannot be moved by this constant without a test failing.
+- PHPCS, PHPStan L8, domain purity — clean. **578 unit tests**, 2,149
+  assertions, 5 new.
+
+#### Not delivered
+
+- **The structured corpus was not re-measured end to end.** The dev site's
+  Gemini key hit its free-tier daily cap of 1,000 embedding requests during
+  the sweep, so the confirmation run could not be embedded. The chunk output
+  is byte-identical to the run that scored 0.944, which is a sound argument
+  and not a measurement, and it is recorded as the former.
+- **A target of 96 was not measured** — the run that attempted it is the one
+  that exhausted the quota, and its 0.463 is an artefact of an index with no
+  vectors in it rather than a result. It is excluded rather than reported.
+- **Four values, chosen on the same 54 questions they are reported
+  against.** The keyword weight in the entry below was fitted on two thirds
+  and confirmed on a held-out third; this was not, and is the weaker claim
+  of the two.
+
+#### Known gaps
+
+- **Changing a source's chunk settings re-chunks nothing.** Ingestion skips
+  any document whose content hash is unchanged, and chunk configuration is
+  not part of that hash — so new chunking reaches existing installs only as
+  their content happens to change. Every site indexed before this release
+  keeps its 800-token chunks. Not fixed here because the fix is a forced
+  rebuild, a rebuild re-embeds everything, and re-embedding spends the
+  customer's money unattended — which this product's own rule says must be
+  shown before it is committed to, not after. It needs an operator action
+  with a cost on it, and that is a screen, not a constant.
+- **`chunk_tokens` and `chunk_overlap` are read from source config and
+  written by nothing.** `ChunkOptions::fromConfig()` has always honoured
+  them and no UI or controller sets them, so FR-KB-06's "configurable" is
+  true of the value object and not of the product. `chunk_target` joins
+  them in that state.
+- **The dev site's eval corpus is left unsearchable** — 62 chunks, no
+  vectors, source in `error` — until the daily quota resets. One re-index of
+  the "Eval corpus" source restores it; the chunks are already correct.
+
+### M1 passes — 0.944, and the fix had been sitting there unmeasured
+
+**Goal:** close the M1 recall gate, which failed at 0.889 against a 0.90
+floor in the entry below.
+
+The entry below named the cause — a whole page is one embedding, so a
+two-sentence fact competes with everything else on it — and named the fix:
+split on sub-headings. What it did not record clearly enough is that the
+fix was **committed the same day** (`6c51f8d`) and then never measured,
+because that same commit was fixing the test teardown that had destroyed
+the site's Gemini key. The corpus was re-seeded with an `h2` per paragraph,
+re-ingested into 62 chunks instead of 13, and the embedding run died on
+`No embedding provider is configured`. The source has been sitting at
+`status=error` with 62 unembedded chunks ever since.
+
+So nothing needed writing. It needed running.
+
+| M1 criterion | Budget | Measured | |
+|---|---|---|---|
+| Retrieval latency p95 at 10k chunks | ≤ 300 ms | 34.6 ms | ✅ |
+| Peak memory | ≤ 96 MB | 89.4 MB | ✅ |
+| Quantisation recall@5 (synthetic) | ≥ 0.90 | 1.000 | ✅ |
+| **End-to-end recall@5 (real questions)** | **≥ 0.90** | **0.944** (was 0.889) | ✅ |
+
+The first three are carried over from the previous run and were **not**
+re-measured — they come from the synthetic benchmark, which generates its
+own vectors and is unaffected by how the eval corpus is chunked.
+
+#### What actually changed
+
+| Corpus | Chunks | recall@5 | MRR |
+|---|---|---|---|
+| Flat pages, unweighted fusion | 13 | 0.815 | 0.698 |
+| Flat pages, keyword weighted 0.2 | 13 | 0.889 | 0.765 |
+| **Sub-headed pages, keyword weighted 0.2** | **62** | **0.944** | **0.831** |
+
+51 of 54. The prose is identical between the two corpora — only the
+structure differs, one `h2` per existing paragraph. The chunker has always
+refused to merge across a heading, so the headings alone took the twelve
+business pages from roughly one chunk each to five or six, and a question
+about voucher validity stopped competing with the whole of the card
+payments page.
+
+MRR rose 0.066 alongside recall, which is the tell that this is a real fix
+rather than a lucky reshuffle: the answers are not merely arriving in the
+top five, they are arriving higher.
+
+#### Verified
+
+Google `gemini-embedding-001`, 21 sources, 207 chunks, 54 questions, k=5.
+
+- **recall@5 0.944, MRR 0.831**, 100% of questions above the 0.62
+  confidence floor.
+- Latency p95 1,184 ms, median 1,017 ms — **of which 931 ms is the
+  provider's embedding call.** Our own share is unchanged and is not what a
+  visitor is waiting for.
+- The three remaining misses all have a high best cosine (0.78–0.84), so
+  they are ranking problems rather than coverage problems: the right page
+  is being found and out-ranked. "Can I drop a return at the depot instead
+  of posting it?", "If I reserve something in advance, when am I charged?",
+  and "Can they send it back without me finding out?" — the last is a gift
+  return asked entirely in pronouns, with no noun the embedding can hold.
+- Cost of the run: 54 embedding calls, roughly $0.0002. Embedding the 62
+  backlogged chunks was one batch, well inside the job's single run.
+
+#### Known gaps
+
+- **0.944 is the number for content that has sub-headings.** A customer
+  whose pages are flat prose gets something much closer to 0.889, because
+  the chunker has no boundary to split on and a 500-token page stays a
+  single chunk under the 800-token budget. The product is not doing
+  anything about that yet, and the two figures in the table above are the
+  measured size of the difference. Splitting long headingless sections on
+  paragraph boundaries is the obvious follow-up and is not written.
+- **Everything the previous entry said about the corpus still holds.** It
+  is authored rather than harvested, 54 questions rather than the 200 the
+  sprint plan named, and 158 chunks — now 207 — is a small corpus where
+  top-5 is about 2.4% of the index. Recall at 10,000 chunks is a harder
+  problem than this measures and would be expected to fall.
+- **`questions.json` was regenerated**, because document ids move on every
+  re-index. That is the failure mode `build-questions.php` exists to
+  prevent, and it did.
+
 ### R-2 host matrix — Hostinger, and a split-brain PHP that kills every job
 
 **Goal:** start the five-host compatibility matrix that has been "still one
@@ -150,7 +330,6 @@ all four carry a timestamp and `stalled` returns to zero.
   fallback, first-token timing and the widget on a real page still need
   measuring. The plugin now runs on the web here, so these are unblocked in
   principle; they were not reached in this session.
-- **The `last ran` job health signal** described above.
 - **Guidance for the sodium case.** Enabling the extension is the fix and
   nothing in the product says so.
 - **Four of the five hosts.** SiteGround, Bluehost, GoDaddy and WP Engine
