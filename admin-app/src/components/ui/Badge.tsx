@@ -3,11 +3,20 @@ import { cn } from '@/lib/cn';
 
 type Tone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info';
 
+/*
+ * Border and fill take the state colour; the label takes its ink variant.
+ *
+ * A badge is the worst case for contrast in the whole admin — small text on
+ * a 10% tint of the very colour it is written in. `text-warning` on
+ * `bg-warning/10` measured 2.85:1 against the 4.5:1 AA needs. The ink
+ * tokens are the same hues a step darker, and only in the light theme,
+ * where the tint is pale enough for it to matter.
+ */
 const TONES: Record<Tone, string> = {
   neutral: 'border-border bg-surface-sunken text-content-secondary',
-  positive: 'border-on-duty/25 bg-on-duty/10 text-on-duty',
-  warning: 'border-warning/25 bg-warning/10 text-warning',
-  danger: 'border-danger/25 bg-danger/10 text-danger',
+  positive: 'border-on-duty/25 bg-on-duty/10 text-on-duty-ink',
+  warning: 'border-warning/25 bg-warning/10 text-warning-ink',
+  danger: 'border-danger/25 bg-danger/10 text-danger-ink',
   info: 'border-accent/25 bg-accent-subtle text-accent-text',
 };
 

@@ -160,6 +160,44 @@ final class LicenceSignatureTest extends TestCase {
 		self::assertTrue( LicenceSignature::verify( array( 'status' => 'active' ), time() ) );
 	}
 
+	public function testItReportsThatItIsVerifyingWhenItIs(): void {
+		self::assertTrue( LicenceSignature::isSupported() );
+		self::assertTrue( LicenceSignature::isVerifying() );
+	}
+
+	public function testWhatIsReportedIsWhatActuallyHappens(): void {
+		Monkey\tearDown();
+		Monkey\setUp();
+		Functions\when( 'apply_filters' )->alias( static fn( string $hook, $value ) => '' );
+
+		/*
+		 * The coupling this whole reporting change exists for.
+		 *
+		 * `verify()` returning true means "not checked", and the status
+		 * screen showing "verifying: no" has to mean the same thing. Before
+		 * this, `isConfigured()` had no callers at all: the fallback was
+		 * real and nothing reported it, while a docblock said something did.
+		 * Asserting the two together is what stops the screen drifting back
+		 * into reassuring an operator about a check that is not running.
+		 */
+		self::assertFalse( LicenceSignature::isVerifying() );
+		self::assertTrue(
+			LicenceSignature::verify( $this->sign( array( 'status' => 'active' ) ), time() ),
+			'A body that cannot be checked must be accepted, and reported as unchecked.'
+		);
+	}
+
+	public function testATamperedBodyIsStillRefusedWhileVerifying(): void {
+		$body = $this->sign( array( 'status' => 'active' ) );
+
+		$body['status'] = 'agency';
+
+		// The control for the test above. "Accepted" must not be the answer
+		// everywhere, or reporting `verifying: true` would mean nothing.
+		self::assertTrue( LicenceSignature::isVerifying() );
+		self::assertFalse( LicenceSignature::verify( $body, time() ) );
+	}
+
 	/**
 	 * Sign a body the way the licence server does.
 	 *

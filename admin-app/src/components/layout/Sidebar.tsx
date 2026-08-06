@@ -124,7 +124,7 @@ export function Sidebar({ clerks, onHire }: SidebarProps) {
               lapses, and the second is the one that explains why a screen
               is refusing. */}
           {licence.tier !== licence.effective_tier ? (
-            <span className="text-xs font-semibold text-[var(--hvc-warning)]">
+            <span className="text-xs font-semibold text-[var(--hvc-warning-ink)]">
               {licence.status_label}
             </span>
           ) : (

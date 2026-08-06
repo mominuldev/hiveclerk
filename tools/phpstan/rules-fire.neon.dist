@@ -1,0 +1,41 @@
+# Analyses only the deliberately-broken fixture, to prove both custom
+# rules are still registered and still matching.
+#
+# Deliberately NOT `includes: ../../phpstan.neon.dist`. PHPStan merges
+# `paths` from an included file, so inheriting would drag the whole of
+# `src` into a run whose entire purpose is two errors in one file — and,
+# worse, would make this check pass or fail for reasons unrelated to the
+# rules. The service registration below is duplicated from the real
+# config for the same reason: if it drifts, this check is testing a
+# fiction. `tools/verify-phpstan-rules.php` reads both files and refuses
+# to run when the two service lists disagree.
+parameters:
+    level: 8
+    phpVersion: 80300
+
+    paths:
+        - fixtures
+
+    bootstrapFiles:
+        - bootstrap.php
+
+    scanDirectories:
+        - ../../vendor
+
+    treatPhpDocTypesAsCertain: false
+
+    ignoreErrors:
+        # The fixture is not autoloaded and calls a function this run has
+        # no stub for. Irrelevant: the rules under test inspect the parse
+        # tree, not whether the symbol resolves.
+        - identifier: function.notFound
+
+services:
+    -
+        class: Hiveclerk\Tools\PHPStan\DomainPurityRule
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Hiveclerk\Tools\PHPStan\NoGlobalWpdbRule
+        tags:
+            - phpstan.rules.rule

@@ -64,11 +64,14 @@
   --color-spectrum-3: var(--hvc-spectrum-3);
 
   --color-on-duty: var(--hvc-on-duty);
+  --color-on-duty-ink: var(--hvc-on-duty-ink);
   --color-indexing: var(--hvc-indexing);
   --color-paused: var(--hvc-paused);
   --color-draft: var(--hvc-draft);
   --color-warning: var(--hvc-warning);
+  --color-warning-ink: var(--hvc-warning-ink);
   --color-danger: var(--hvc-danger);
+  --color-danger-ink: var(--hvc-danger-ink);
 
   --radius-sm: var(--hvc-radius-sm);
   --radius-md: var(--hvc-radius-md);

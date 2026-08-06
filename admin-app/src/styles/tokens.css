@@ -24,6 +24,22 @@
   --hvc-ink-300: #cbd1da;
   --hvc-ink-400: #9ba3b0;
   --hvc-ink-500: #6b7280;
+  /*
+   * Exists because #6b7280 does not pass AA on our own sunken surfaces.
+   *
+   * It clears 4.5:1 on white (4.83) and fails on ink-100 (4.32) and on the
+   * blended greys behind table headers (4.13) — which is exactly where
+   * tertiary text is used most: column headings, the ⌘K hint, status
+   * badges, all at 10–11px. WCAG has no small-text allowance, and small
+   * text is where the shortfall is felt anyway.
+   *
+   * A separate step rather than moving ink-500, because ink-500 also backs
+   * `--hvc-draft` in the dark theme, where darkening it makes things worse.
+   * Not ink-600 either: that is what secondary text uses, and collapsing
+   * tertiary onto it would fix the contrast by deleting a level of the
+   * hierarchy.
+   */
+  --hvc-ink-550: #5f6773;
   --hvc-ink-600: #545c6b;
   --hvc-ink-700: #363c46;
   --hvc-ink-800: #262b33;
@@ -52,6 +68,23 @@
   --hvc-amber-400: #fbbf24;
   --hvc-red-500: #dc2626;
   --hvc-red-400: #f87171;
+
+  /*
+   * The status colours again, dark enough to be read.
+   *
+   * The 500s are the right *fill* colours — a dot, a bar, a 10% tint — and
+   * they are all too light to be text on those same tints. Measured on the
+   * blends the badges actually produce: emerald 3.35:1, red 4.13:1, amber
+   * 2.85:1, against 4.5:1 required. Amber was the worst by a distance,
+   * which is the usual story with yellow.
+   *
+   * Separate steps rather than darkened 500s: "warning" as a fill and
+   * "warning" as text are not the same requirement, and collapsing them
+   * would make every amber dot muddy to fix text nobody reads on a dot.
+   */
+  --hvc-emerald-600: #047857;
+  --hvc-amber-600: #a34a06;
+  --hvc-red-600: #b91c1c;
   --hvc-slate-500: #64748b;
   --hvc-slate-400: #94a3b8;
 
@@ -122,7 +155,7 @@
 
   --hvc-text: #101319;
   --hvc-text-secondary: var(--hvc-ink-600);
-  --hvc-text-tertiary: var(--hvc-ink-500);
+  --hvc-text-tertiary: var(--hvc-ink-550);
   --hvc-text-inverse: var(--hvc-ink-0);
 
   --hvc-accent: var(--hvc-accent-600);
@@ -131,12 +164,31 @@
   --hvc-accent-text: var(--hvc-accent-700);
   --hvc-on-accent: var(--hvc-ink-0);
 
+  /*
+   * The 600s, not the 500s. These tokens are used as text far more often
+   * than as fills — "Qualified", "On duty", "3 failed" — and every one of
+   * those sat on a tint of itself, which is the worst case for contrast.
+   */
   --hvc-on-duty: var(--hvc-emerald-500);
   --hvc-indexing: var(--hvc-accent-600);
   --hvc-paused: var(--hvc-slate-500);
   --hvc-draft: var(--hvc-ink-400);
   --hvc-warning: var(--hvc-amber-500);
   --hvc-danger: var(--hvc-red-500);
+
+  /*
+   * The same states, as text.
+   *
+   * Split from the fills above because they are answering different
+   * questions. A meter bar or a status dot needs to be *identifiable* at a
+   * glance, which is what the vivid 500s are for; the same colour as
+   * 11px text on a 10% tint of itself measures 2.85:1 for amber and fails
+   * AA outright. Darkening the shared token fixed the text and turned
+   * every "hot" score bar brown, which is how this split got made.
+   */
+  --hvc-on-duty-ink: var(--hvc-emerald-600);
+  --hvc-warning-ink: var(--hvc-amber-600);
+  --hvc-danger-ink: var(--hvc-red-600);
 
   --hvc-shadow-sm: 0 1px 2px rgb(16 19 25 / 0.05);
   --hvc-shadow-md:
@@ -183,7 +235,16 @@
   --hvc-accent-hover: var(--hvc-accent-300);
   --hvc-accent-subtle: rgb(90 120 240 / 0.16);
   --hvc-accent-text: var(--hvc-accent-300);
-  --hvc-on-accent: #ffffff;
+  /*
+   * Dark text on the accent button, not white.
+   *
+   * The dark theme lightens the accent to accent-400 so links read against
+   * a dark canvas, and white on that measures 3.9:1 — the primary button,
+   * the most-clicked control in the admin, was the worst contrast failure
+   * in the dark theme. Darkening the button instead would make it recede
+   * into the canvas it is meant to stand out from.
+   */
+  --hvc-on-accent: var(--hvc-ink-990);
 
   --hvc-on-duty: var(--hvc-emerald-400);
   --hvc-indexing: var(--hvc-accent-400);
@@ -191,6 +252,15 @@
   --hvc-draft: var(--hvc-ink-500);
   --hvc-warning: var(--hvc-amber-400);
   --hvc-danger: var(--hvc-red-400);
+
+  /*
+   * No split needed here. On a dark canvas the 400s are the *light* end of
+   * the pair, and all three already clear AA as text — measured, not
+   * assumed. Pointing them at the fills keeps one less thing to drift.
+   */
+  --hvc-on-duty-ink: var(--hvc-on-duty);
+  --hvc-warning-ink: var(--hvc-warning);
+  --hvc-danger-ink: var(--hvc-danger);
 
   --hvc-shadow-sm: none;
   --hvc-shadow-md: 0 2px 8px rgb(0 0 0 / 0.36);

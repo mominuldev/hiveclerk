@@ -59,8 +59,8 @@ export function KpiCard({ kpi, feature = false }: KpiCardProps) {
             className={cn(
               'inline-flex items-center gap-0.5 font-medium tabular-nums',
               good === null && 'text-content-tertiary',
-              good === true && 'text-[var(--hvc-on-duty)]',
-              good === false && 'text-[var(--hvc-danger)]'
+              good === true && 'text-[var(--hvc-on-duty-ink)]',
+              good === false && 'text-[var(--hvc-danger-ink)]'
             )}
           >
             {rising ? <ArrowUp size={12} aria-hidden="true" /> : <ArrowDown size={12} aria-hidden="true" />}
@@ -75,7 +75,7 @@ export function KpiCard({ kpi, feature = false }: KpiCardProps) {
       <div
         className={cn(
           'mt-3',
-          good === false ? 'text-[var(--hvc-danger)]' : 'text-accent'
+          good === false ? 'text-[var(--hvc-danger-ink)]' : 'text-accent'
         )}
       >
         <Sparkline values={kpi.series} label={kpi.label} />

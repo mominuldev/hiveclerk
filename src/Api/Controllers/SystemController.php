@@ -12,6 +12,7 @@ namespace Hiveclerk\Api\Controllers;
 use Hiveclerk\Api\AbstractController;
 use Hiveclerk\Api\Response\ApiResponse;
 use Hiveclerk\Core\Capabilities\Capabilities;
+use Hiveclerk\Core\Licence\LicenceSignature;
 use Hiveclerk\Core\Queue\JobHeartbeat;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Core\Support\ClockInterface;
@@ -185,6 +186,22 @@ final class SystemController extends AbstractController {
 				),
 				'cron'         => $this->cron(),
 				'providers'    => $this->providers(),
+				/*
+				 * Whether licence answers are actually being checked, and
+				 * if not, whose problem it is.
+				 *
+				 * A signature that cannot be verified is accepted rather
+				 * than rejected — failing closed on it would turn one bad
+				 * release of our key material into every customer's licence
+				 * breaking at once. The cost is that such an install trusts
+				 * TLS alone, and until this block existed it did so with
+				 * nothing anywhere saying so.
+				 */
+				'licence'      => array(
+					'sodium'         => LicenceSignature::isSupported(),
+					'key_configured' => LicenceSignature::isConfigured(),
+					'verifying'      => LicenceSignature::isVerifying(),
+				),
 				'object_cache' => array(
 					/*
 					 * Cast, because the global this reads is null until

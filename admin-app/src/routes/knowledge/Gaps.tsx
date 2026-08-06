@@ -210,7 +210,7 @@ function GapRow({ gap, composing, onCompose }: GapRowProps) {
         <div className="mt-3 flex items-center gap-2">
           <span className="inline-flex items-center gap-1 text-xs text-content-tertiary">
             {'resolved' === gap.status && (
-              <Check size={13} aria-hidden="true" className="text-[var(--hvc-on-duty)]" />
+              <Check size={13} aria-hidden="true" className="text-[var(--hvc-on-duty-ink)]" />
             )}
             {gap.status_label}
           </span>

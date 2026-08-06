@@ -63,9 +63,18 @@
     </rule>
 
     <!-- Method names are camelCase to match PSR-12 and the interfaces in
-         the architecture documents. -->
+         the architecture documents.
+
+         tests/* is excluded for the same reason and was only added when
+         something finally tripped it. The sniff skips methods on classes
+         that extend or implement anything — it cannot know whether a
+         parent dictates the name — so every test class and every fake
+         implementing a port was already invisible to it. A standalone
+         helper in tests/Support is not, and it would have been the one
+         file in the suite required to use snake_case. -->
     <rule ref="WordPress.NamingConventions.ValidFunctionName">
         <exclude-pattern>src/*</exclude-pattern>
+        <exclude-pattern>tests/*</exclude-pattern>
     </rule>
 
     <!-- Domain objects expose camelCase properties to match PSR-12 and the

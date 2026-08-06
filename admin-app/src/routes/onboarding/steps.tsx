@@ -116,7 +116,7 @@ export function StepModel({ onDone, busy }: StepProps) {
 
         {verified ? (
           <p className="flex items-center gap-2 rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-content">
-            <ShieldCheck size={15} aria-hidden="true" className="text-[var(--hvc-on-duty)]" />
+            <ShieldCheck size={15} aria-hidden="true" className="text-[var(--hvc-on-duty-ink)]" />
             This provider is connected and verified.
           </p>
         ) : (

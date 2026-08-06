@@ -24,8 +24,8 @@ const SEVERITY_ICON = {
 } as const;
 
 const SEVERITY_COLOUR = {
-  urgent: 'text-[var(--hvc-danger)]',
-  warning: 'text-[var(--hvc-warning)]',
+  urgent: 'text-[var(--hvc-danger-ink)]',
+  warning: 'text-[var(--hvc-warning-ink)]',
   info: 'text-content-tertiary',
 } as const;
 
@@ -89,7 +89,7 @@ export function Dashboard() {
             <AlertTriangle
               size={16}
               aria-hidden="true"
-              className="shrink-0 text-[var(--hvc-warning)]"
+              className="shrink-0 text-[var(--hvc-warning-ink)]"
             />
             <span className="min-w-0 text-sm text-content">{banner.title}</span>
           </span>

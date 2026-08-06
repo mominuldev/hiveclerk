@@ -33,10 +33,20 @@ export function Widget({ boot, host }: Props): preact.JSX.Element {
   const [dismissed, setDismissed] = useState(false);
 
   /*
-   * The site-wide consent gate. Read from storage on the first render
-   * rather than in an effect, because an effect runs after the page-view
-   * ping below would already have fired — and a telemetry row written
-   * before the visitor agreed is the row the gate exists to prevent.
+   * The site-wide consent gate, read from storage during the first render
+   * rather than in an effect.
+   *
+   * This comment used to claim the read order is what stops a page view
+   * being recorded before the visitor agreed. It is not: the guard on the
+   * ping effect below is, and it holds on its own — moving this into an
+   * effect leaks nothing, because `consented` simply starts false and the
+   * guard returns early. Measured both ways in
+   * `tests/frontend/widget-gate.test.ts`.
+   *
+   * What reading it here buys is that a returning visitor who already
+   * agreed is never briefly in the not-agreed state at all, so no part of
+   * the tree has to be correct for a frame that should not exist. Keeping
+   * it is defence in depth behind the guard, not the defence itself.
    */
   const consentRequired = boot.consent?.required ?? false;
   const [consented, setConsented] = useState(() => !consentRequired || accepted());

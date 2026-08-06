@@ -103,6 +103,7 @@ export function SystemStatus() {
               ],
               ['Multisite', data.wordpress.multisite],
               ['OpenSSL', data.php.openssl],
+              ['Licence signature checks', data.licence.verifying],
             ]}
           />
 
@@ -110,6 +111,26 @@ export function SystemStatus() {
             <p className="mt-3 text-xs leading-relaxed text-content-secondary">
               Without OpenSSL, provider keys cannot be encrypted at rest and no key
               can be saved.
+            </p>
+          )}
+
+          {/*
+            A licence answer that cannot be signature-checked is accepted
+            rather than rejected, because failing closed would break every
+            customer at once over one bad release of our key material. The
+            cost is that the install trusts TLS alone, and this is the only
+            place that says so. Which of the two causes it is decides who
+            can fix it, so they are worded separately.
+          */}
+          {!data.licence.verifying && (
+            <p className="mt-3 text-xs leading-relaxed text-content-secondary">
+              {!data.licence.sodium
+                ? 'Licence answers are not signature-checked, because PHP here has no ' +
+                  'sodium extension. Licensing still works over HTTPS. Ask your host to ' +
+                  'enable sodium to add the second check.'
+                : 'Licence answers are not signature-checked, because this build ships no ' +
+                  'verification key. Licensing still works over HTTPS. This one is ours to ' +
+                  'fix — please report it.'}
             </p>
           )}
         </Card>

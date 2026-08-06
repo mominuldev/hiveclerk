@@ -6,6 +6,863 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### The accessibility claim was false on every screen, in both themes
+
+**Goal:** the Phase 6 accessibility audit. The Definition of Done has asked
+for keyboard reachability, visible focus and honoured `prefers-reduced-motion`
+on every screen since sprint 1, and every sprint has ticked it on the
+strength of somebody looking at the page.
+
+Nothing had ever measured contrast. It failed on **all 23 screens**.
+
+#### Fixed
+
+**92 contrast failures, light theme, every screen.** One cause:
+`--hvc-text-tertiary` (`#6b7280`) is used for the small type that labels the
+product — column headings, the ⌘K hint, status badges, at 10–11px. It clears
+AA on white (4.83:1) and fails on our own sunken surfaces (4.13:1 behind
+table headers). WCAG has no small-text allowance.
+
+Fixed with a new step, `--hvc-ink-550` (`#5f6773`), rather than by moving
+`ink-500` — which also backs `--hvc-draft` in the dark theme, where
+darkening it makes things worse — and rather than by reusing `ink-600`,
+which is what secondary text uses and would have fixed the contrast by
+deleting a level of the hierarchy.
+
+**61 more, both themes, once the first fix exposed them.** Status colours
+used as text on a 10% tint of themselves — the worst case there is:
+
+| | measured | needed |
+|---|---|---|
+| amber `#d97706` on its own tint | **2.85:1** | 4.5:1 |
+| emerald `#059669` on its own tint | 3.35:1 | 4.5:1 |
+| white on the dark theme's accent button | 3.90:1 | 4.5:1 |
+| red `#dc2626` on its own tint | 4.13:1 | 4.5:1 |
+
+The dark-theme entry is the primary button — the most-clicked control in the
+admin. It now takes dark ink rather than white, because darkening the button
+instead would make it recede into the canvas it exists to stand out from.
+
+#### The fix I had to do twice, and the comment that caught me
+
+The first attempt darkened `--hvc-on-duty`, `--hvc-warning` and
+`--hvc-danger` to their 600s. The audit went clean. The screenshot showed
+every "hot" lead's score bar had turned **brown**.
+
+Those tokens are used as fills as often as text — a meter bar, a status dot,
+a 10% tint. The two are different requirements: a fill needs to be
+*identifiable* at a glance, text needs to be *readable*. I had written a
+comment in the token file two edits earlier saying I did not want to
+collapse them, and then collapsed them.
+
+So the tones are now split — `--hvc-warning` fills, `--hvc-warning-ink`
+reads — and only in the light theme, because the dark theme's 400s already
+pass as text (measured, not assumed). Badges, and the eleven places that
+used `text-[var(--hvc-warning)]` directly, point at the ink variants.
+
+#### Added
+
+- **`tools/a11y.mjs`** — axe-core driven through Playwright against the
+  live admin, 23 screens × 2 themes, scoped to `#hvc-root` so wp-admin's own
+  markup is not counted against us. Exits non-zero on any violation.
+  `npm run test:a11y`. Not in `npm run check`: it needs a running site.
+- **`tests/frontend/accessibility.test.tsx`** — the same ruleset in jsdom,
+  15 screens, in `npm run check`.
+
+#### The jsdom half is a regression net, not an audit
+
+Worth stating plainly because the number is flattering and misleading. That
+file was **green while all 92 real failures existed**, for two reasons:
+
+- jsdom has no layout, so contrast cannot run at all — it reports
+  "incomplete", which is not a pass and reads like one.
+- `fetch` throws there, so the screens render chrome and empty states.
+  `/leads/table` audits three buttons and **no table**; the same route in a
+  browser has 341 elements.
+
+It is worth keeping — it catches labels, roles, heading order and landmarks
+in a second, on every run. It is not the audit, and its docblock now says so.
+
+#### Verified
+
+- 46 screen/theme combinations, 200–1,223 elements each, **0 violations**
+  against `wcag2a, wcag2aa, wcag21a, wcag21aa`.
+- The tool was falsified after it went green: reverting one token
+  reintroduced 7 violations on `leads/table` and exit code 1, against 0 for
+  the clean run. Checked separately, because the first attempt read `tail`'s
+  exit status rather than the tool's and reported 0 for a failing run.
+- Both themes re-screenshotted after the token changes; the amber bars are
+  amber again.
+- `npm run check` green: 58 front-end tests, ESLint 0 problems, assets match
+  a fresh build, 180.11 KB / 17.23 KB against 350 / 40.
+
+#### Not delivered this sprint
+
+- **The widget is not audited.** `tools/a11y.mjs` covers the admin only. The
+  widget is what a customer's visitors actually use, it ships its own
+  stylesheet with its own colours, and no rule here has ever run against it.
+  This is the largest remaining gap in the claim.
+- **Keyboard and focus were not measured**, only contrast and the
+  markup-level rules. axe cannot see whether a focus ring is visible or
+  whether a modal traps Tab. The widget's focus trap remains hand-verified.
+- **`prefers-reduced-motion`** is honoured in both stylesheets and still
+  checked by reading them.
+
+#### Known gaps
+
+- Contrast passes at AA. AAA (7:1) was not attempted and several tokens
+  would fail it.
+- The audit runs against the development site's content. A customer with a
+  long clerk name or a translated string may lay out differently.
+- Nothing stops a new component reintroducing `text-warning`; the split is a
+  convention, not a lint rule.
+
+### The licence check that was not being reported, and in some builds not happening
+
+**Goal:** the first of the Phase 6 production-readiness items — the stale
+claims. Two of the three turned out to be already handled. The third was a
+security control that existed only in a comment.
+
+#### Security
+
+**A silent fallback whose only mitigation was a sentence.**
+`LicenceSignature::verify()` returns true — accepts the answer — when there
+is no configured public key or no libsodium. That is deliberate and stays:
+failing closed would turn one bad release of *our* key material into every
+customer's licence breaking at once, and a signature is defence in depth
+behind TLS rather than the thing licensing rests on.
+
+The docblock said the cost of that fallback was mitigated because
+`isConfigured()` "exists for the status screen to report". It does not. The
+method had **no callers anywhere in the plugin** — every `isConfigured` hit
+in the codebase is a different method on `KeyResolver`. An install that was
+trusting TLS alone said so nowhere: not in the API, not on the screen, not
+in a log.
+
+Now `/system/health` carries a `licence` block and the System Status screen
+shows **Licence signature checks**, with wording that separates the two
+causes, because they have different owners:
+
+- No sodium extension → the host's, and an operator can ask for it.
+- No verification key → ours, and they should report it.
+
+`isVerifying()` is the condition `verify()` short-circuits on, *read* rather
+than restated. A screen computing the same answer from its own copy of the
+rule would keep reporting "verifying" for however long the copies took to
+drift, and the entire value of reporting it is that it is true.
+
+#### Verified
+
+- The failing branch was rendered, not reasoned about: a temporary
+  mu-plugin filtered the key away, the payload flipped to
+  `{"sodium":true,"key_configured":false,"verifying":false}`, and the screen
+  showed "No" plus the "ours to fix" wording. Probe removed and the normal
+  state re-confirmed.
+- Both themes screenshotted for the new row.
+- Falsified twice. Making `isVerifying()` return true unconditionally fails
+  `testWhatIsReportedIsWhatActuallyHappens`; making the fallback fail closed
+  instead of open fails that test and the existing skip-when-filtered-away
+  test. Note the `git diff --numstat` check used to confirm those edits was
+  useless — both are line-for-line swaps — and the test failures are what
+  actually proved they applied.
+- PHP suite 707 unit (up 3) + 43 integration, PHPStan L8 clean, front end 43.
+
+#### The other two items were already done, and are recorded as such
+
+- **Version sync** — held by `tests/Unit/VersionConsistencyTest.php`, built
+  last sprint. 4 tests, green. No drift between the plugin header, the
+  readme and `package.json`.
+- **Changelog constant correction** — nothing found. The grace-period
+  constants named in this file (`GRACE_PERIOD`, `MAX_AGE`) still match the
+  code, and the two claims about thirty days are already recorded as
+  judgements rather than measurements. Searched rather than assumed; if a
+  drifted constant exists, this pass did not find it.
+
+#### Known gaps
+
+- Nothing tests that the *screen* renders the failing branch. It was
+  verified by hand with a probe; a regression that dropped the notice would
+  pass every automated check.
+- The fallback's other half is untested here: no environment without
+  libsodium was exercised, because this machine has it. The `sodium: false`
+  wording has been read, not seen.
+
+### The front end gets tests, and a comment gets caught taking credit
+
+**Goal:** the presentation layer had no automated tests of any kind. Every
+claim about it — the error boundary, the consent gate, the router upgrade —
+rested on a screenshot of one screen or on reading the code.
+
+#### Added
+
+- **A front-end runner.** Vitest 3.2 on jsdom, configured in
+  `vitest.config.ts` separately from `vite.config.ts`. The build config sets
+  an output directory, a manifest and manual chunks, none of which mean
+  anything to a test run, and inheriting them would let a change to how the
+  bundle is split break the tests for reasons unrelated to the code. Tailwind
+  is deliberately absent: these assert behaviour, not appearance.
+- **43 tests across four files** — the error boundary, the consent gate's
+  component and memory, the widget's actual suppression of the page-view
+  ping, and every sidebar destination.
+- `npm run test:frontend` (and `test:watch`), wired into `npm run check`
+  between `lint` and `verify:assets`. Verified the chain actually breaks:
+  with a route renamed, `npm run test:frontend` exits 1.
+- **The test files are now typechecked.** `tsconfig.json` did not include
+  `tests/`, so `tsc --noEmit` had never looked at them — a type error in a
+  test would have gone unreported indefinitely.
+
+#### The routing test exists because the catch-all hides the failure
+
+The route table ends in `<Route path="*" element={<Navigate to="/dashboard" />} />`.
+That is right for a stale bookmark and it means a renamed route does not
+blank the screen or throw — it quietly redirects. Rename `leads/pipeline`
+and clicking "Leads" lands the operator on the Dashboard, which looks
+exactly like a working admin. The sidebar also keeps its own `NAV` table of
+destinations, separate from the route declarations, and nothing held the two
+together.
+
+The test drives the real `App` — the real router, the real nested routes,
+the real index redirects — rather than a rebuilt copy of the route table,
+because a copy would agree with itself after a rename.
+
+#### A comment that credited the wrong mechanism
+
+The consent initialiser in `public-widget/src/app.tsx` carried a comment
+saying it was read during the first render *because* an effect would run
+after the page-view ping had already fired, and a telemetry row written
+before the visitor agreed is the row the gate exists to prevent.
+
+That reasoning is wrong, and the falsification pass is what showed it.
+Moving the read into an effect and re-running the suite leaks nothing: all
+five gate tests still pass, because `consented` simply starts false and the
+guard on the ping effect returns early. Removing the *guard* instead does
+leak, and two tests fail naming it. The guard is the defence; the read order
+is defence in depth behind it.
+
+The code is unchanged — reading at first render is still worth keeping, so
+that a returning visitor is never briefly in the not-agreed state. Only the
+comment changed, to say what is actually true. A comment that records the
+wrong cause is worse than no comment: the next person removes the guard and
+keeps the initialiser, because the file told them which one mattered.
+
+#### Two environment gaps, and what they cost to find
+
+- **`localStorage` read as `undefined`** under jsdom. Not an origin problem,
+  which was the first guess and cost a pinned-and-unpinned jsdom version to
+  rule out: `localStorage` *is* an own property of `window`, but
+  `window.constructor === Object`, because Vitest exposes the environment's
+  globals as a copied object rather than the live jsdom `Window`. Supplied
+  an in-memory `Storage` instead, which is what a test wants anyway — no
+  shared origin, no quota, and a clean slate per test.
+- **`matchMedia` does not exist** in jsdom and is not pretending to. The
+  theme hook calls it to resolve `auto`, so without a stub every render of
+  the admin shell died on a missing function rather than on anything under
+  test. Stubbed to report "not dark" and never change; a test that cares
+  about the dark theme has to say so, because silently defaulting to dark
+  would make the light theme the untested one.
+
+#### Verified
+
+Every one of the four files was falsified before being trusted:
+
+| Broke | Failed | Still passed |
+|---|---|---|
+| Consent stored in `sessionStorage` | 2 of 8 | 6 |
+| Decline demoted from a button to a link | 2 of 8 | 6 |
+| Nested route renamed, redirect left pointing at the old name | 2 of 24 | 22 |
+| Parameterised `clerks/:uuid` route deleted | 1 of 24 | 23 |
+| Catch-all route deleted | 1 of 24 | 23 |
+| Consent guard removed from the page-view effect | 2 of 5 | 3 |
+| Consent read in an effect instead of at first render | **0 of 5** | 5 |
+
+That last row is the finding above, not a gap: nothing failed because
+nothing broke.
+
+The suppression tests are paired with controls that must produce a request —
+an ungated visitor, and one who agreed on an earlier page view. Without
+them, "no request was made" also describes a widget that never pings at all,
+and would keep passing after the gate was deleted entirely.
+
+- 43 tests, 4 files, 1.7 s.
+- `npm run check` green end to end: `tsc`, ESLint (0 problems), the new
+  suite, `verify:assets` ("matches a fresh build (7 files)"), size-limit at
+  179.93 KB admin / 17.23 KB widget against 350 / 40.
+- The comment-only edit to the widget left the built assets byte-identical.
+
+#### A falsification that proved nothing, and was nearly believed
+
+The first attempt at the "consent read in an effect" case failed to apply —
+a `perl` substitution died on a syntax error — and the `grep` meant to
+confirm the edit matched pre-existing text elsewhere in the file, printing
+"edit applied" over a file that had not been touched. The suite passed, and
+that pass meant nothing at all.
+
+Redone with the edit verified by `git diff --numstat` before the run. The
+result happened to be the same, which is exactly why it was worth redoing:
+the right answer arrived at by an unsound method is indistinguishable from
+the wrong one until someone checks.
+
+#### Not delivered this sprint
+
+- **Interaction depth.** `@testing-library/user-event` is installed and not
+  used by a single test. These assert what renders and what is requested,
+  not what a keyboard user can reach — the widget's focus trap in
+  particular is still verified only by hand.
+- **The dark theme.** Stubbed as "not dark" everywhere. Both themes are
+  still verified by eye, which is what the Definition of Done asks for and
+  not what a test does.
+- **React Query behaviour.** The retry policy that refuses to retry 401,
+  403 and 404 is reasoned about and untested.
+
+#### Known gaps
+
+- The admin routing tests render every route module, so they will catch a
+  crash on mount and nothing about what those screens *do*. Nineteen screens
+  have no test of their own behaviour.
+- The widget gate is covered; the rest of the widget — streaming, capture,
+  handoff polling, the focus trap — is not.
+- `tests/frontend/routing.test.tsx` asserts the landing path of each sidebar
+  link, but reads the expected destinations from a list in the test file. A
+  route and its sidebar entry renamed *together*, consistently, would pass.
+  That is the correct outcome; it is worth knowing it is not checking intent.
+
+### Write paths, and a test that made a mess proving it worked
+
+**Goal:** the piece the entry below named as next — the half of the REST
+surface that changes something — and a version drift the architecture
+review flagged and nobody had picked up.
+
+#### The lesson was in the falsification, not the tests
+
+The write tests pass. What is worth recording is what happened when they
+were checked.
+
+Deleting the chunk validation to prove the tests catch its absence worked:
+the 422 became a 201 and the test failed, naming the route. It also left a
+knowledge source on the development site — because a test that asserts
+"this is refused" registers no cleanup on its happy path, and the one case
+it exists to catch is precisely the case where a record *does* get
+created. The assertion failed after the write, with nothing arranged to
+undo it.
+
+So refusal tests now register the undo *before* asserting. It costs
+nothing when the refusal works, and it is the difference between a failing
+test and a failing test that also made a mess. Re-checked by breaking the
+validation again: the test fails, and leaves zero rows behind.
+
+Two more things were found by making the mess rather than reasoning about
+it:
+
+- **`DELETE` on a clerk is a soft delete.** It stamps `deleted_at` and the
+  row stays — right for the product, since removing a clerk is not a
+  request to destroy its conversation history, and wrong for a fixture,
+  which would accumulate one invisible row per run. Tear-down removes
+  them outright.
+- **Creating a clerk is permissive by design.** An empty name becomes
+  "Custom" and an unrecognised role falls back rather than being refused.
+  That is a defaulting decision, not a validation gap, so the 422
+  assertions target knowledge sources, which do validate.
+
+An exploratory probe left three clerks on the site during this work, one
+of them soft-deleted and therefore invisible to the API that had just
+reported deleting it. All removed; the suite now leaves the row counts
+exactly as it found them, verified before and after a full run.
+
+#### What the write tests assert
+
+The clerk lifecycle end to end — create answers 201 with the record, a new
+clerk is a draft so nothing reaches a visitor before somebody decided it
+should, it reads back, it renames, and a deleted one is a 404. The
+cost-exhaustion refusal with WordPress's argument handling in front of it,
+which is the arrangement a browser actually meets. And that a subscriber's
+create is refused *and wrote nothing on the way to being refused*.
+
+#### Four version declarations, one of them describing a release that never happened
+
+The plugin header, `HIVECLERK_VERSION` and `package.json` all said
+`0.1.0-dev`. `readme.txt` said `Stable tag: 0.1.0` — a version that has
+never been released, pointing WordPress.org at nothing.
+
+The header and the constant are read by different things about the same
+install: assets are cache-busted against one, the licence check reports
+the other. Bumping one and forgetting the other ships a release serving
+the previous version's cached assets while telling the licence server
+something else, and nothing errors.
+
+`Stable tag` is now `trunk`, which is the documented value for a plugin
+whose stable version is what is committed, and the only answer that does
+not name a version that may not exist. Four tests hold the invariant:
+header, constant and `package.json` must agree exactly, and the stable tag
+must be `trunk` or the current version.
+
+#### Verified
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **704**, 4,095 assertions (4 new) |
+| Integration tests | **43**, 172 assertions (9 new) |
+| Site residue after a full run | agents 8 → 8, sources 21 → 21, users 1 → 1 |
+
+- **Falsified twice.** Removing the chunk validation fails the write test;
+  bumping the header without the constant fails two version tests. Both
+  reverted, both clean.
+
+#### Known gaps
+
+- **The write coverage is two resources deep.** Clerks and knowledge
+  sources. Sequences, integrations, leads and privacy settings all have
+  write paths and none of them is exercised — and the privacy ones change
+  retention, which deletes history irreversibly.
+- **Nothing tests a concurrent write.** Two operators renaming the same
+  clerk, or a delete racing a publish, is not covered anywhere.
+- **The stable tag is now honest rather than correct.** `trunk` is right
+  while nothing has shipped; the first real release has to set it to a
+  version, and only the test's existence will remind anybody.
+- **Still no front-end test suite**, which is now the largest untested
+  surface in the product by a wide margin.
+
+### The REST layer is now driven by the thing that drives it
+
+**Goal:** the half of the controller finding a unit test cannot reach —
+what happens when a request actually arrives, through WordPress's own
+dispatcher.
+
+#### Why `rest_do_request()` and not another unit test
+
+The unit contract invokes each permission callback directly and checks it
+returns 401 and 403. That proves the callback refuses. It does not prove
+WordPress **asks** it: a route whose callback is perfect but whose
+registration lost its `permission_callback` key passes there and is open
+here.
+
+And the stub request in the unit suite deliberately does not imitate the
+dispatcher — no argument defaults, no type coercion, no
+`sanitize_callback`, no `validate_callback`. Those are exactly the
+mechanisms a route definition relies on to mean anything.
+
+`tests/Integration/RestTestCase.php` drives the real server. Everything
+below runs against a developer's own install, so it creates nothing it
+does not remove, and issues no destructive call against a record it did
+not make.
+
+#### What it found immediately
+
+- **The `/system` routes were outside the check.** The first version
+  filtered on `/admin` and silently omitted four routes gated on
+  `manage_settings` — the ones that report the install's configuration.
+  Widened to everything the plugin serves that is not the widget: 87
+  gated route patterns, 48 of which answer GET.
+- **A skip list naming a route that does not exist.** `/admin/chat/stream`
+  was excluded from the read-surface sweep; the plugin has never
+  registered it. An exclusion for something imaginary excludes nothing,
+  so the list now asserts every entry is a real registered route.
+- **Two fixture users left on the development site.** An early version
+  called `wp_delete_user()` without loading the admin include it lives
+  in, so tear-down threw and the run reported a different error entirely.
+  Removed, and the base class now sweeps stranded fixtures on set-up —
+  the ordinary case is tear-down's job, this is for the case that
+  actually happened.
+
+#### What is asserted
+
+**Authorization, end to end.** Every gated route is called as a
+signed-out caller and as a subscriber, and must refuse both. Subscriber
+rather than a role with partial access, because the question is what
+somebody holding none of the seven capabilities can reach. Only GET is
+exercised: a write that got through the gate would act on the
+developer's data, and a test that has to succeed at being refused must
+not be destructive when it is not.
+
+**The read surface.** Every parameterless readable route is called as an
+administrator and must not fatal, must carry the `data` envelope on
+success, and must carry a machine-readable `code` on refusal. A 4xx is
+accepted — an unconfigured provider is a legitimate answer on a
+development install — but a body no client can parse is not.
+
+**404 rather than 500.** Every uuid-keyed route is given a well-formed
+uuid that does not exist. A bookmarked link to a deleted conversation is
+the ordinary case, and answering it with a fatal turns a missing record
+into an error page.
+
+**The dispatcher's own validation.** `per_page: 100000` must be refused
+or clamped. The maximum in the route args only means anything because
+WordPress enforces it, which is precisely what the unit suite cannot
+show.
+
+#### Verified
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | 700, 4,088 assertions |
+| Integration tests | **34**, 124 assertions (11 new) |
+| Gated routes exercised | 48, as signed-out and as subscriber |
+
+- **Falsified end to end.** A `permission_callback` replaced with
+  `__return_true` on `UsageController` failed both the signed-out and the
+  subscriber test, naming the route. Reverted, and the suite is green
+  with no fixture users left behind.
+
+#### Known gaps
+
+- **Reads only.** No write path is covered — creating a clerk, updating a
+  sequence, deleting a source. Those are where a 422 matters most, and
+  they are also where a test that goes wrong damages the data somebody
+  was working with. It needs fixtures the suite creates and owns end to
+  end, which is the next piece rather than an oversight.
+- **One installation, one dataset.** These assert against whatever the
+  developer's site happens to contain. A route that only fails on an
+  empty table, or on a table with a million rows, passes here.
+- **The public widget routes are still only checked structurally.** They
+  authenticate with a signed session token, so 401/403 is the wrong
+  question; asserting them properly means minting a real session, which
+  `SessionServiceTest` does at the service level and nothing does at the
+  HTTP level.
+
+### Handler tests, and a missing artefact that was never missing
+
+**Goal:** the two halves of Phase 5 left open — what a REST handler
+*does* with a request, and the eval scorer this file has twice called
+uncommitted.
+
+#### The cost-exhaustion door now has a test instead of a memory
+
+The chunk-configuration refusal added in the security phase was verified
+by driving four hostile bodies through a running site. That proves it
+worked that afternoon and would not notice it being deleted.
+
+`WP_REST_Request` and `WP_REST_Response` are now in the unit bootstrap —
+minimal, and only the surface `src/` actually touches, which a survey puts
+at `get_param()` and a single `get_header()`. Anything else is absent on
+purpose, so a test reaching for behaviour WordPress has and the stub does
+not fails loudly rather than passing against a fiction.
+
+`SourceController::create()` takes eleven collaborators and the path under
+test needs exactly one: it refuses an unknown or unavailable extractor
+first, then validates the configuration and returns. Nothing in between
+touches storage, the queue or the audit log — so the controller is built
+without its constructor and handed a single extractor registry. Building
+the other ten would be a fixture larger than the behaviour.
+
+The part worth naming is what happens when a configuration is *accepted*.
+The call then runs on into storage this fixture deliberately has not
+provided, and throws. Treating any throwable as "accepted" would turn
+"stopped before it ever reached the validation" into a pass, and every
+not-refused test would hold against a controller that had stopped
+validating entirely — so the test asserts the throw is the storage one, by
+message.
+
+Falsified before being trusted: deleting the validation from `create()`
+fails six of the eight tests.
+
+#### The scorer was committed all along
+
+Two entries in this file record that the eval scorer does not ship, and
+that the recall and MRR figures are therefore unreproducible. That is
+wrong, and it has been wrong since it was first written.
+
+`tools/retrieval-eval.php` is committed, and computes recall@k against the
+0.90 floor, MRR, p95 and median latency with the provider's share broken
+out, and the cost of the run — every number this file reports. It exits
+non-zero below the floor, so it can gate a release.
+
+The claim came from looking in `tools/eval/`, which holds the corpus, the
+question source and the id-resolver, and not one directory up where the
+runner sits beside the synthetic benchmark. An audit made that mistake,
+and this file repeated it twice without anyone checking.
+
+What was genuinely missing is the thing that would have prevented it:
+`tools/eval/README.md` now states where the scorer is, gives the four
+commands that reproduce the end-to-end numbers in order, and separates the
+two measurements that get confused with each other — the benchmark
+measures our code with vectors it invents, the evaluation measures the
+product with an embedding model's judgement in it.
+
+#### Verified
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **700**, 4,088 assertions (8 new) |
+| Integration tests | 23, 71 assertions |
+
+- The eval pipeline was checked end to end as data rather than run:
+  `retrieval-eval.php` is syntax-clean, and `questions.json` is a bare
+  list of 54 objects carrying `question` and `document_ids`, which is
+  exactly the shape the loader reads. A full run spends the customer's
+  quota and its failure mode on a spent daily cap looks like a code
+  failure, so it was not run for a documentation fix.
+
+#### Known gaps
+
+- **Eight handler tests is not handler coverage.** One validation path on
+  one controller now has a test. The envelopes, the 404 on an unknown
+  uuid, and the success paths of twenty-six controllers are still only
+  covered where a service-level test happens to reach them.
+- **The stub request is not WordPress's.** It does not resolve defaults
+  from route args, does not coerce types, and does not run
+  `sanitize_callback`. A handler relying on WordPress having already
+  sanitised a parameter would be tested here against raw input — stricter
+  than reality, which is the safe direction, but not the same thing.
+- **The eval numbers are still not re-measured.** The scorer being
+  present makes them reproducible; nobody has reproduced them, and the
+  figures in this file remain from the runs that produced them.
+
+### The REST layer gets tests, and the first run found a rule I had written wrong
+
+**Goal:** the largest remaining testing gap — nineteen controllers with no
+unit tests, in the layer where request validation lives and where the
+chunk-configuration cost-exhaustion vector hid.
+
+#### Controllers can be inspected without a database
+
+The reason this had not been done is that testing a controller looks like
+it needs its repositories, its services and a database. It does not, for
+the part that was missing: **`registerRoutes()` describes routes, it does
+not serve them.** Permission callbacks and handlers are closures, and none
+is invoked at registration, so a controller built with
+`newInstanceWithoutConstructor()` will still declare everything it
+declares.
+
+Verified rather than assumed: all 26 concrete controllers register that
+way and produce **98 routes — the same number `tools/verify-routes.php`
+counts against a booted WordPress.**
+
+That matters beyond convenience. The live checker is the right place for
+the gating assertion and was the *only* place for it, so it needs an
+install and cannot run in `composer check` — which means a developer
+could ship an ungated route without ever running the thing that would
+catch it. The same assertion now runs where it costs nothing.
+
+#### What is asserted, and the one that a static check cannot make
+
+Across every route the codebase declares, rather than a list, so a
+controller added tomorrow is covered the moment it exists:
+
+- every route has a permission callback, and it is never `__return_true`
+- every route declares its methods and a callable handler
+- everything is under `hiveclerk/v1`, with a well-formed pattern
+- every `enum` parameter carries a `validate_callback`, because WordPress
+  does not enforce an enum unless something asks it to — an arg that
+  declares one and stops there is documentation, not a constraint
+
+And the one worth the most: **every admin gate is invoked**, once as a
+signed-out caller and once as a signed-in one without the capability, and
+must answer 401 and 403 respectively. A permission callback that is
+non-trivial and always returns `true` satisfies every other assertion
+here and gates nothing. Sixty-eight gates exercised.
+
+#### The first run failed, and the code was right
+
+The sanitisation rule I wrote — every `type: string` parameter must carry
+a `sanitize_callback` or a `validate_callback` — failed immediately on
+`ProvidersController::api_key`.
+
+The parameter is correct. It is CLAUDE.md's own rule: sanitising an API
+key produces a quietly corrupted one that fails later against the
+provider, pointing the operator at Anthropic when the fault is a stray
+line break in our form. It is validated against a pattern and refused
+with 422.
+
+Ten parameters were in that state. Each was read before anything was
+decided about it, and all ten turned out to be deliberate: `api_key`
+refuses rather than mangles, and the other nine are multi-line — a
+`sanitize_text_field` in the route definition would flatten them, so they
+go through `sanitize_textarea_field()` or `wp_kses_post()` in the handler
+where the right one is known.
+
+So the assertion became an exemption list that names each parameter and
+where it is actually cleaned, and **the list is asserted to be exact**: an
+entry that stops being needed fails the test. A list of exemptions nobody
+re-reads is how a rule quietly stops applying, and this one cannot rot
+without saying so.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **692**, 4,069 assertions (8 new, 1,703 assertions) |
+| Integration tests | 23, 71 assertions |
+| Routes covered | **98**, matching the live checker exactly |
+
+- **Each guard was falsified before being trusted.** A route set to
+  `__return_true`, a bare string parameter added to an existing route,
+  and a stale exemption entry were each introduced on purpose; each
+  produced the intended failure naming the offending controller, route
+  and parameter, and each was reverted.
+
+#### A ruleset change worth naming
+
+`WordPress.NamingConventions.ValidFunctionName` was excluded for `src/*`
+only. The sniff skips methods on classes that extend or implement
+anything — it cannot know whether a parent dictates the name — so every
+test class and every fake implementing a port was already invisible to
+it, and the exclusion had simply never been needed for `tests/*`. A
+standalone helper in `tests/Support` is visible to it, and would have
+been the one file in the suite required to use snake_case. The exclusion
+now covers `tests/*`, as the sibling `ValidVariableName` rule already
+did.
+
+#### Known gaps
+
+- **This tests declarations, not handlers.** What a route *does* with a
+  valid request — the envelope it returns, the 404 on an unknown uuid,
+  the 422 on a bad value — is still only covered where a service-level
+  test happens to reach it. That needs `WP_REST_Request` in the unit
+  bootstrap or the integration suite, and is the larger half of the
+  original finding.
+- **The exemption list is a judgement, not a proof.** Ten handlers were
+  read and each does clean its parameter; nothing asserts they keep
+  doing it. A test that deleted `sanitize_textarea_field()` from a
+  handler would still pass.
+- **Public widget routes are excluded from the gate assertion.** They
+  authenticate with a session token rather than a capability, so 401/403
+  is the wrong question to ask them; their gating is covered by
+  `SessionServiceTest` and the live checker, not here.
+
+### Tests for the parts nothing was watching
+
+**Goal:** the first of the testing gaps the audit named. It picked three
+where the absence of a test was not "this is untested" but "this cannot
+fail", which is a different and worse thing.
+
+#### Two gates that could only ever pass
+
+`hiveclerk.domainPurity` and `hiveclerk.noGlobalWpdb` are what make the
+layering in CLAUDE.md enforceable rather than aspirational. They are
+registered by class name in a neon file, and **a rule that stops being
+registered does not fail the build — it stops failing it.** A renamed
+class, a dropped `tags:` entry, a merge that ate the `services` block:
+any of them would disarm the architectural boundary while
+`composer analyse` went on printing "[OK] No errors", and the first
+evidence would be domain code importing WordPress months later.
+
+`tools/verify-phpstan-rules.php` analyses a fixture that violates both
+rules and fails when either goes quiet. It is the inverse of every other
+gate here: it fails when PHPStan is too silent.
+
+The fixture lives at `tools/phpstan/fixtures/src/Domain/`, and the path
+is the point — both rules decide whether they apply by looking for
+`/src/Domain/` and the persistence allowlist in the file path, so the
+fixture exercises the matching as well as the registration. `tools/` is
+outside PHPStan's normal `paths`, so it never touches the real run.
+
+Two failure modes were checked by causing them:
+
+| Broken deliberately | Result |
+|---|---|
+| One rule removed from both configs | fails, naming the rule that went quiet |
+| Configs drift — rule dropped from the shipped one only | fails, naming the disagreement |
+
+The second matters because the fixture config duplicates the service
+list rather than inheriting it (inheriting would drag all of `src` into
+the run). Duplication is only safe while the two agree, so the script
+reads both files and refuses to run when they do not.
+
+#### The committed build could not be checked against its source
+
+`assets/` is in version control because WordPress.org distributes source
+ZIPs with no build step — the files a customer installs are the files in
+the repository, not what a build would produce from it. Nothing verified
+those were the same, and a change to `admin-app/src` merged without a
+rebuild ships yesterday's admin screen while every gate stays green,
+because every gate reads the source.
+
+`tools/verify-assets.mjs` rebuilds and compares content hashes. It could
+not have existed a week ago: Tailwind's content scan was unbounded, so
+the stylesheet was a function of whatever files were lying in the working
+directory and a fresh build differed for reasons unrelated to the source.
+Bounding the scan is what made the comparison mean something.
+
+Checked by breaking it: a class added to `Tabs.tsx` without rebuilding
+produces a failure that names the four affected files and says what to
+run. The first attempt to break it did not break it at all — the edit
+never applied — which is worth recording, because a check verified by an
+edit that silently failed is a check verified by nothing.
+
+#### The runner every job funnels through had no tests
+
+`JobRegistry::run()` is the single choke point both queue drivers call
+into, which makes it the only place that can answer "was this job
+reached" — the question the R-2 host findings turned on. It had no tests.
+Neither did `CronQueue`, which is the driver on every install that does
+not happen to have WooCommerce.
+
+Now covered: the heartbeat is written **before** `handle()`, so a job
+killed by the memory limit still leaves evidence it was reached; a throw
+is contained rather than surfacing on a visitor's page; a failure is
+recorded as a second, distinct beat, because "reachable and broken" and
+"nothing is calling it" have opposite fixes; and arguments that arrive
+malformed from storage are normalised rather than passed on.
+
+For `CronQueue` the behaviour worth pinning is the idempotence of
+`scheduleRecurring()`. Every module re-registers its recurring job on
+every request that boots the plugin, so without the pending check that is
+a fresh cron event per page load — an events array growing without bound
+and a job running as many times per tick as the site has had visitors.
+
+#### A contract that applies to jobs nobody has written yet
+
+`JobContractTest` discovers jobs from the filesystem rather than listing
+them, because a list passes forever after somebody adds the ninth job and
+forgets to add it here — which is the failure it exists to catch. Eight
+found today; the ninth is in the suite the moment it exists.
+
+It asserts the part of the background-work rule a type signature cannot:
+every hook carries the `hiveclerk/` prefix, no two jobs share a hook, any
+declared batch size is a real bound, and a recurring interval is at least
+as long as the shortest schedule WP-Cron has.
+
+The prefix assertion is not tidiness. `Deactivator` unschedules by prefix
+and `Footprint` sweeps by prefix, and three jobs once survived
+deactivation for several sprints — firing at hooks with no listener,
+rescheduling themselves, erroring never.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **684**, 2,366 assertions (43 new) |
+| Integration tests | 23, 71 assertions |
+| `composer check` | now runs `verify:rules` |
+| `npm run check` | now runs `verify:assets` |
+| Admin bundle | 179.93 KB gzipped (budget 350) |
+| Widget bundle | 17.23 KB gzipped (budget 40) |
+
+- **Every new check was falsified before being trusted.** Both PHPStan
+  failure modes, an assets drift, and a job hook with the wrong prefix
+  were each caused on purpose and each produced the intended failure.
+
+#### Known gaps
+
+- **Nineteen REST controllers still have no unit tests.** Route gating is
+  verified at runtime by `tools/verify-routes.php`, but request
+  validation, error envelopes and `sanitize_callback` behaviour are not —
+  and the chunk-configuration cost-exhaustion vector fixed two entries
+  below lived in exactly that layer.
+- **The eight jobs are covered structurally, not behaviourally.** What is
+  asserted is that each declares a bound; not that it honours it, and not
+  that it re-enqueues correctly when work remains. `EmbedSourceJob`'s
+  384-per-run loop is still unexercised.
+- **`ActionSchedulerQueue` remains untested.** It needs Action Scheduler
+  present to test properly, and the fallback driver is what most installs
+  run.
+- **Still no front-end test suite.** `verify-assets` proves the committed
+  bundle matches the source; nothing proves the source works.
+- ~~**The eval scorer is still not committed**, so the recall and MRR
+  figures in this file remain unreproducible from the repository.~~
+  **Wrong, and corrected in the entry above.** `tools/retrieval-eval.php`
+  has been committed since Sprint 4 and computes every figure this file
+  reports. The claim came from looking in `tools/eval/`, which holds the
+  corpus and the questions, and not one directory up.
+
 ### Two Gemini prices added, and the third model did not need one
 
 **Goal:** close the pricing-table gap the entry below reported — 963

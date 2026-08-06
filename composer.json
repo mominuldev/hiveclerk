@@ -58,8 +58,10 @@
         "check": [
             "@lint",
             "@analyse",
+            "@verify:rules",
             "@test"
-        ]
+        ],
+        "verify:rules": "php tools/verify-phpstan-rules.php"
     },
     "minimum-stability": "stable",
     "prefer-stable": true

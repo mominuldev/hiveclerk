@@ -24,11 +24,11 @@ const STATUS_ICON = {
 } as const;
 
 const STATUS_COLOUR = {
-  active: 'text-[var(--hvc-on-duty)]',
+  active: 'text-[var(--hvc-on-duty-ink)]',
   inactive: 'text-content-tertiary',
-  expired: 'text-[var(--hvc-warning)]',
-  invalid: 'text-[var(--hvc-danger)]',
-  seat_limit: 'text-[var(--hvc-warning)]',
+  expired: 'text-[var(--hvc-warning-ink)]',
+  invalid: 'text-[var(--hvc-danger-ink)]',
+  seat_limit: 'text-[var(--hvc-warning-ink)]',
   unreachable: 'text-content-tertiary',
 } as const;
 

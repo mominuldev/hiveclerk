@@ -83,25 +83,67 @@ final class LicenceSignature {
 	}
 
 	/**
+	 * Whether libsodium is available to check a signature with.
+	 *
+	 * Reported separately from {@see self::isConfigured()} because the two
+	 * have different fixes: a missing key is a build problem and belongs to
+	 * us, while a missing extension is the host's and the operator can have
+	 * it turned on. Collapsing them into one boolean would tell an operator
+	 * that something is wrong without telling them whose.
+	 *
+	 * @return bool
+	 */
+	public static function isSupported(): bool {
+		return function_exists( 'sodium_crypto_sign_verify_detached' );
+	}
+
+	/**
+	 * Whether signatures are actually being checked on this install.
+	 *
+	 * This is the condition {@see self::verify()} short-circuits on, read
+	 * rather than restated. A status screen that computed the same answer
+	 * from its own copy of the rule would keep reporting "verifying" for
+	 * however long it took the copies to drift apart, and the whole value
+	 * of reporting it is that it is true.
+	 *
+	 * @return bool
+	 */
+	public static function isVerifying(): bool {
+		return self::isConfigured() && self::isSupported();
+	}
+
+	/**
 	 * Check the signature on a decoded response body.
 	 *
 	 * Returns true when there is nothing to check — no configured public
 	 * key, or a PHP build without libsodium. That is a deliberate default:
 	 * this is defence in depth behind TLS, and failing closed on it would
 	 * turn one bad release of the *server's* key material into every
-	 * customer's licence going unverifiable at once. What it costs is that a
-	 * misconfigured install silently drops back to trusting TLS alone, which
-	 * is why {@see self::isConfigured()} exists for the status screen to
-	 * report.
+	 * customer's licence going unverifiable at once.
+	 *
+	 * What it costs is that such an install drops back to trusting TLS
+	 * alone. That used to be described here as something the status screen
+	 * reported, and it was not: {@see self::isConfigured()} had no callers
+	 * anywhere in the plugin. The mitigation now exists — `/system/health`
+	 * carries {@see self::isVerifying()} and the System Status screen shows
+	 * it — because a silent fallback whose only mitigation is a comment is
+	 * an undefended fallback.
 	 *
 	 * @param array<string, mixed> $body Decoded JSON.
 	 * @param int                  $now  Current UNIX time.
 	 * @return bool
 	 */
 	public static function verify( array $body, int $now ): bool {
+		if ( ! self::isVerifying() ) {
+			return true;
+		}
+
 		$key = self::publicKey();
 
-		if ( '' === $key || ! function_exists( 'sodium_crypto_sign_verify_detached' ) ) {
+		// Unreachable: isVerifying() has already established the key is
+		// non-empty. Kept because the alternative is asserting the type to
+		// the analyser, and an assertion is a promise while this is a check.
+		if ( '' === $key ) {
 			return true;
 		}
 

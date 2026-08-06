@@ -41,6 +41,7 @@ export interface SystemHealth {
     openssl: boolean;
   };
   wordpress: { version: string; multisite: boolean; cron_disabled: boolean };
+  licence: { sodium: boolean; key_configured: boolean; verifying: boolean };
   mysql: { version: string; mariadb: boolean; charset: string; collation: string };
   database: {
     version: number;
