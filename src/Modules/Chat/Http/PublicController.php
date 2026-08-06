@@ -178,9 +178,11 @@ abstract class PublicController extends AbstractController {
 			return 'unknown';
 		}
 
-		$salt = defined( 'AUTH_SALT' ) ? (string) AUTH_SALT : '';
-
-		return substr( hash( 'sha256', $salt . '|' . $ip ), 0, 32 );
+		// wp_salt() rather than the AUTH_SALT constant: reading the constant
+		// fell back to an empty string, and an unsalted digest of an address
+		// is reversible across the whole IPv4 space. Core generates and
+		// stores a per-install salt when the constants are absent.
+		return substr( hash( 'sha256', wp_salt( 'auth' ) . '|' . $ip ), 0, 32 );
 	}
 
 	/**

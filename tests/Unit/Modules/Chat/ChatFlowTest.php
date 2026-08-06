@@ -233,6 +233,72 @@ final class ChatFlowTest extends TestCase {
 		$this->assertSame( 96, $conversation->totalTokensOut );
 	}
 
+	/**
+	 * A call nobody can price is recorded as unpriced, not as free.
+	 *
+	 * `Completion::$reportedCost` was already nullable and `PricingTable`
+	 * already answered null for a model it does not know — the product
+	 * knew the cost was unknown, and `(float) ( ... ?? 0.0 )` in
+	 * ChatService was where it stopped knowing. A zero is a claim the call
+	 * was free, and it summed into a spend figure that understated in the
+	 * direction nobody audits.
+	 *
+	 * Not hypothetical: on the development site every one of 963 usage
+	 * events is unpriced, because none of the Gemini models in use appear
+	 * in the pricing table.
+	 */
+	public function testAnUnpricedCallIsRecordedAsUnknownRatherThanFree(): void {
+		$this->ai->deltas     = array( 'Yes.' );
+		$this->ai->completion = new Completion( 'Yes.', 'gemini-3.1-flash-lite', 'google', 100, 20, 'stop', 0, null );
+
+		$conversation = $this->conversation();
+
+		$this->chat->reply( $this->agent(), $conversation, 'Do you ship to Germany?', new RecordingSink() );
+
+		$assistant = end( $this->messages->saved );
+
+		$this->assertNull( $assistant->cost, 'an unpriced call must not be stored as 0.0' );
+		$this->assertSame( 0.0, $conversation->totalCost, 'and must not be added to the total' );
+		$this->assertSame( 1, $conversation->unpricedCalls, 'it is counted instead' );
+	}
+
+	/**
+	 * A priced call still adds to the total and counts as nothing unknown.
+	 */
+	public function testAPricedCallStillAccumulatesNormally(): void {
+		$this->ai->deltas     = array( 'Yes.' );
+		$this->ai->completion = new Completion( 'Yes.', 'claude-sonnet-5', 'anthropic', 100, 20, 'stop', 0, 0.0125 );
+
+		$conversation = $this->conversation();
+
+		$this->chat->reply( $this->agent(), $conversation, 'Do you ship to Germany?', new RecordingSink() );
+
+		$this->assertSame( 0.0125, $conversation->totalCost );
+		$this->assertSame( 0, $conversation->unpricedCalls );
+	}
+
+	/**
+	 * The two do not contaminate each other across a conversation.
+	 *
+	 * This is the case the pair of numbers exists for: "at least this
+	 * much, plus one call we could not price" is the honest reading, and
+	 * neither a null total nor a bare sum can express it.
+	 */
+	public function testAMixedConversationKeepsWhatItKnowsAndCountsWhatItDoesNot(): void {
+		$conversation = $this->conversation();
+
+		$this->ai->deltas     = array( 'One.' );
+		$this->ai->completion = new Completion( 'One.', 'claude-sonnet-5', 'anthropic', 10, 5, 'stop', 0, 0.02 );
+		$this->chat->reply( $this->agent(), $conversation, 'First?', new RecordingSink() );
+
+		$this->ai->deltas     = array( 'Two.' );
+		$this->ai->completion = new Completion( 'Two.', 'gemini-3.1-flash-lite', 'google', 10, 5, 'stop', 0, null );
+		$this->chat->reply( $this->agent(), $conversation, 'Second?', new RecordingSink() );
+
+		$this->assertSame( 0.02, $conversation->totalCost );
+		$this->assertSame( 1, $conversation->unpricedCalls );
+	}
+
 	public function testAMessageOverTheLengthCapIsRefusedBeforeAnySpend(): void {
 		$outcome = $this->chat->reply(
 			$this->agent(),

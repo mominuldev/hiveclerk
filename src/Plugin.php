@@ -178,27 +178,49 @@ final class Plugin {
 	}
 
 	/**
-	 * Run pending migrations on the next admin request.
+	 * Run pending migrations at the first opportunity of any kind.
 	 *
 	 * Deliberately not run during activation: activation has a short
 	 * execution budget, and a failure there leaves the plugin half-installed
-	 * with no way to report why. On admin_init there is a request to report
+	 * with no way to report why. On a request there is somewhere to report
 	 * into and a next request to retry from.
+	 *
+	 * ## Why `admin_init` alone was not enough
+	 *
+	 * Nothing guarantees an administrator visits. A background auto-update, a
+	 * `wp plugin update` in a deploy script, or a site whose owner only ever
+	 * looks at the front end all leave new code running against the previous
+	 * schema — and the parts that keep running are the ones with nobody
+	 * watching: the widget answering visitors over REST, and every cron job.
+	 * A migration that adds a column is then a fatal on the first query that
+	 * selects it, on a visitor's request, with the admin screen that would
+	 * have fixed it never opened.
+	 *
+	 * So the check runs on `admin_init`, on `rest_api_init` and at the top of
+	 * the job runner. It is a comparison of two integers when there is
+	 * nothing to do, which is almost always, and the lock means the three
+	 * cannot race each other into running the same migration twice.
 	 *
 	 * @return void
 	 */
 	private function registerMigrationHook(): void {
-		add_action(
-			'admin_init',
-			function (): void {
-				$migrator = $this->container->get( Migrator::class );
+		$run = function (): void {
+			$migrator = $this->container->get( Migrator::class );
 
-				if ( $migrator->needsMigration() ) {
-					$migrator->migrate();
-				}
-			},
-			5
-		);
+			if ( $migrator->needsMigration() ) {
+				$migrator->migrate();
+			}
+		};
+
+		add_action( 'admin_init', $run, 5 );
+
+		// Before any route handler, so a widget request on a site nobody
+		// administers is not answered by code the schema does not match.
+		add_action( 'rest_api_init', $run, 1 );
+
+		// And before background work, which is the other path that runs for
+		// months without an administrator ever being present.
+		add_action( 'hiveclerk/jobs/register', $run, 1 );
 	}
 
 	/**

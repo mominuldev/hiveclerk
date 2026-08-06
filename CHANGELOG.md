@@ -6,6 +6,1033 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Two Gemini prices added, and the third model did not need one
+
+**Goal:** close the pricing-table gap the entry below reported — 963
+unpriced usage events on the development site.
+
+Only 31 of them were a table gap.
+
+| Model | Calls | Cause |
+|---|---|---|
+| `gemini-3.1-flash-lite` | 29 | Not in the table |
+| `gemini-3.5-flash` | 2 | Not in the table |
+| `gemini-embedding-001` | **932** | **Already priced since before this** |
+
+`gemini-embedding-001` has carried `$0.15` per million input tokens all
+along. Its calls report as unpriced for a different reason, and the code
+doing it is deliberate: Google's `batchEmbedContents` returns no token
+usage, so `GoogleProvider` reports `tokensIn: 0` — "left at zero rather
+than estimated", in its own words — and `AiService` records the cost as
+unknown rather than multiplying a rate by zero. Every one of those 932
+events has `tokens_in = 0`, which is what confirms it.
+
+Adding a row for it would have changed nothing, and the entry below was
+wrong to describe all 963 as a pricing-table gap. Making those calls
+priceable needs a token count from the provider, or an estimate that
+declares itself as one — not a price. There is now a comment beside the
+row saying so, because it looks like a missing entry and is not.
+
+#### The two that were missing
+
+Checked against Google's published pricing on 2026-08-06, from the
+pricing page and its machine-readable counterpart, which agree:
+
+| Model | Input / 1M | Output / 1M |
+|---|---|---|
+| `gemini-3.5-flash` | $1.50 | $9.00 |
+| `gemini-3.1-flash-lite` | $0.25 | $1.50 |
+
+Audio input on Flash-Lite is billed at $0.50 rather than $0.25. Not
+modelled: `Pricing` carries one input rate, this product sends text, and
+a second rate nothing can reach would be a number nobody could check.
+
+**`AS_OF` was deliberately left at 2026-02-01.** It is the date the
+*oldest* row was verified, and the Anthropic, OpenAI and Azure prices
+were not re-checked. Moving it forward would claim a check nobody
+performed — the same class of mistake as reporting an unpriced call as
+free, which is the thing the entry below exists to stop.
+
+#### Verified
+
+- Applied against the site's real backlog: the 29 Flash-Lite calls price
+  at **$0.0065** and the two Flash calls at **$0.0015**, from their
+  recorded token counts. The 932 embedding calls still report unpriced,
+  correctly.
+- Four tests pin the figures and the two ways the prefix matcher could
+  get them wrong: a `3.5` id must not inherit the `2.5` price — five
+  times cheaper on output, and a plausible-looking understatement on
+  every call — and `flash-lite` must not be priced as `flash`.
+- One test pins that `gemini-embedding-001` is priced *and* that a
+  zero-token call still costs zero, so nobody closes the gap by inventing
+  a token count.
+- PHPCS, PHPStan L8, domain purity, `tsc`, ESLint clean. **641 unit
+  tests**, 2,282 assertions (4 new). 23 integration tests.
+
+#### Known gaps
+
+- **The prices are read off a page, not an invoice.** They are list
+  prices, they exclude the free tier, batch discounts and context-length
+  tiers, and the `hiveclerk/pricing` filter remains the answer for a site
+  on negotiated rates.
+- **932 of 963 events are still unpriced**, which is the honest state
+  rather than a regression. A site indexing through Gemini sees its
+  embedding spend counted as unknown, and that stays true until the
+  token count does.
+
+### Unknown money stops being reported as zero — and a model switch loses sources
+
+**Goal:** the two items the scalability entry named as not delivered. One
+is now fixed end to end. The other was a hypothesis; it was tested, and it
+is worse than filed.
+
+#### Every call on this install was being reported as free
+
+M0008 made `usage_events.cost` nullable, because a model with no published
+price recorded a cost of zero and zero is a claim that the call was free.
+It was right, and it reached one of four places the same call is written
+to. The other three kept the lie, and the first of them is one line:
+
+    $cost = null !== $finished ? (float) ( $finished->reportedCost ?? 0.0 ) : 0.0;
+
+`Completion::$reportedCost` is nullable. `PricingTable::for()` returns null
+for a model it does not know. The product knew the cost was unknown, and
+that `?? 0.0` is where it stopped knowing — after which the zero was
+written to `messages.cost` and accumulated into `conversations.total_cost`,
+both `NOT NULL DEFAULT 0`.
+
+The fourth is subtler and was the one worth finding. `analytics_daily.cost`
+is summed from `usage_events` — the honest table — with
+`COALESCE(SUM(cost), 0)`. SQL `SUM` skips NULLs, so unpriced calls
+contribute nothing and the daily figure looks complete. **M0008's honesty
+survived on the live usage screen and was destroyed at the rollup
+boundary**, where nothing downstream could tell.
+
+How much this matters was not obvious until it was counted. On the
+development site:
+
+| | |
+|---|---|
+| Usage events recorded | 963 |
+| Of which unpriced | **963 (100%)** |
+| Models involved | `gemini-embedding-001`, `gemini-3.1-flash-lite`, `gemini-3.5-flash` |
+
+Not one of the models actually in use appears in the pricing table. Every
+spend figure derived from real activity on this install was a number with
+nothing in it, presented as a number.
+
+**A total is a sum and a count, not a nullable.** Nulling `total_cost`
+when one message in a conversation is unpriced throws away everything that
+*is* known. "At least this much, plus some calls we could not price" is
+the honest reading and it takes two numbers to say. That shape was not
+invented here — `UsageRepository` already reports `SUM(cost IS NULL) AS
+unpriced` beside its sum. Conversations and the daily rollup now carry the
+same pair, so the layers finally agree.
+
+`M0012` makes `messages.cost` nullable and adds
+`conversations.unpriced_calls` and `analytics_daily.unpriced`. Existing
+rows are not rewritten, for M0008's reason: a zero written before this
+cannot be told from a genuinely free call, and guessing would replace a
+known-wrong number with an unknown-wrong one.
+
+#### A partial model change silently loses whole sources
+
+Filed against the scalability entry as a hypothesis read from the code.
+Tested against the real database, and confirmed.
+
+Two sources, one migrated to a new embedding model and one not:
+
+    source A #28 pinned bench/model-new  — 5 vectors
+    source B #29 pinned bench/model-old  — 5 vectors
+
+    pinFor([A,B]) resolved to: bench/model-new
+    vectors scanned: 5   (10 exist across both sources)
+    results from source A: 5
+    results from source B: 0
+    diagnostic notes: (none)
+
+`RetrievalService::pinFor()` returns the **first** source's pin, and
+`matrix()` filters `provider = ? AND model = ?`, so a source still on the
+old model matches nothing. Not degraded — absent. The width-mismatch
+message added two entries below does not fire either, because these rows
+never become a shard to compare widths against.
+
+So this is not the disk-space story it was filed as. Between starting a
+model change and finishing it, a clerk answers from a subset of its own
+knowledge and says nothing about it — and re-indexing a large source is
+not quick, so that window is real.
+
+**Still not fixed, and now for a better-informed reason.** Deleting the
+old vectors is irreversible without re-embedding at the customer's
+expense, which this product's rule says must be shown before it is
+committed to. But the silence is a separate problem from the cleanup, it
+is cheap to fix, and it should not wait for the screen. It is written up
+here rather than patched blind because the right shape — refuse to search
+on a mixed pin, or search each pin and merge, or warn and continue — is a
+product decision, and the measurement above is what it should be made
+against.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **637**, 2,271 assertions (3 new) |
+| Integration tests | 23, 71 assertions |
+| SEC-04 | 98/98 routes gated |
+
+- **The cost pipeline was driven end to end against the real database.**
+  An unpriced message stores `NULL` and reads back `null` while a priced
+  one stores `0.012500`; a conversation keeps `total_cost=0.0125` beside
+  `unpriced_calls=1`; and the rollup reports `cost` and `unpriced`
+  together, with `unpriced` present in the wire form.
+- `M0012` applied cleanly to the live database, which is now at version 12
+  with `messages.cost` nullable and both counters present.
+- **PHPStan found the two places a nullable cost surfaces** — the message
+  hydrator and `round()` in the conversation controller — which is the
+  argument for changing the type rather than only the column.
+
+#### Known gaps
+
+- **The counts are not on any screen yet.** `unpriced_calls` and
+  `unpriced` reach the API and the wire form; no admin component renders
+  them, so an operator still sees a spend figure without the caveat
+  attached. Rendering it means touching the SPA, and the honest reason it
+  did not happen here is scope, not difficulty.
+- **963 unpriced events is also a pricing-table gap.** This change makes
+  the product able to *say* the calls could not be priced; it does not
+  price them. Adding the Gemini models to `PricingTable` is a separate and
+  much smaller piece of work, and until it happens the honest figure on
+  this install will be "zero priced calls, 963 unpriced".
+- **Rows written before `M0012` still read as free**, deliberately, and
+  there is no way to tell them apart retrospectively.
+- **The partial-migration finding has no fix**, only a measurement and a
+  test script. The task remains open with the evidence attached.
+
+### Three things that were argued rather than measured, and one of them was wrong
+
+**Goal:** close the "known gaps" the previous three entries left behind.
+All three were of the same kind — a claim resting on reasoning where a
+measurement was available. One of them turned out to be false.
+
+#### The rebuild lock did not lock
+
+Sixteen processes, started against a shared wall-clock instant so the
+contention is real rather than an artefact of WP-CLI's boot time, all
+claiming the same matrix rebuild:
+
+    winners: 5 of 16
+
+The lock shipped in the two entries below, was unit-tested, was reviewed,
+and did not work.
+
+The mechanism is worth writing down because the component it was built on
+is sound. `add_option()` really is exclusive across processes —
+**measured separately at 1 winner of 16** — and the exclusion was never
+the problem. The problem was the other half: taking a lock back from a
+process that died holding it, which needs a timestamp, and reading that
+timestamp back is where it comes apart.
+
+A caller whose `add_option()` lost has already, *inside that same call*,
+asked WordPress whether the option exists. If it asked before the
+winner's INSERT landed, WordPress cached "no such option" for the rest of
+the request. The loser's own re-read then returns `false` from that cache
+rather than the timestamp from the table, reads it as a corrupt lock,
+deletes it, and takes over. Five callers did exactly that.
+
+Replaced with `Database\NamedLock`, a MySQL advisory lock. Exclusion is
+decided by the server, and the lock is scoped to the connection — so a
+process killed by the memory limit releases it by disconnecting, with no
+expiry to guess at and **no takeover branch to get wrong**. The bug was
+in a branch that no longer needs to exist.
+
+Re-measured, with the winner holding the lock for three seconds so that a
+queued caller acquiring it later is not mistaken for a second holder:
+
+| Lock | Runs | Winners per run |
+|---|---|---|
+| Matrix rebuild | 3 × 16 processes | **1, 1, 1** |
+| Migration | 3 × 16 processes | **1, 1, 1** |
+
+`Core\Support\LockInterface` is the port, so the callers are testable
+without a database — and the fake is documented as unable to demonstrate
+the property that actually broke, which is why the table above exists.
+
+#### Sharding, at the size the cliff is at
+
+The entry below verified that shards join correctly on a 220-vector
+corpus and admitted that the cliff it removes is at about five thousand.
+Seeded synthetically at 1,536 dimensions, thirty sources of three hundred
+chunks:
+
+| | |
+|---|---|
+| Corpus | 9,000 vectors |
+| Combined matrix — what used to be one cache entry | **1,687.5 KB** |
+| Largest single shard — what is written now | **56.3 KB** |
+| Memcached default item cap | 1,024 KB |
+
+So the cliff is not hypothetical: at nine thousand chunks the old cache
+entry is 65% over the limit, every write would be refused, and every
+visitor message would rebuild from a full table scan. The largest shard
+has eighteen times the headroom.
+
+It still has to answer. Cold search 182.2 ms, warm 28.5 ms, identical
+top-5 both times, peak memory 67.3 MB against a 96 MB budget.
+
+#### The built stylesheet was a function of the working directory
+
+Tailwind 4 discovers classes by scanning the project directory, so every
+file present at build time is an input — including files that have
+nothing to do with the plugin. A conversation transcript saved at the
+plugin root put a `.top-20` utility into the admin CSS, because the
+characters "top-20" appeared in it.
+
+`assets/` is committed, because WordPress.org distributes source ZIPs
+with no build step. The stylesheet in version control therefore has to be
+a function of the source in version control and nothing else, and it was
+not: it varied per machine and per day, and no gate can catch a diff
+nobody can reproduce.
+
+The scan is now bounded to `admin-app`, which is the only thing that
+contributes classes — the widget does not use Tailwind and no PHP in this
+plugin emits a utility class, both checked rather than assumed.
+
+Verified by doing the thing that broke it. A stray file containing
+`top-20 top-5 flex-wrap bg-emerald-500` was placed at the plugin root and
+the build re-run: **byte-identical stylesheet**, same content hash.
+
+The rebuild is also 13 KB smaller, and the 84 dropped selectors were
+checked one at a time against `admin-app/src` rather than assumed to be
+dead. Two looked alive — `table-cell` and `underline` — and both turned
+out to be used only as variants (`md:table-cell`, `hover:underline`),
+whose selectors are still present; it was the bare unprefixed forms,
+which the app never references, that went. The admin was then rendered
+against the live site to confirm it, which is the check the class
+analysis cannot replace.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **634**, 2,264 assertions |
+| Integration tests | 23, 71 assertions |
+| SEC-04 | 98/98 routes gated |
+| Admin bundle | 179.93 KB gzipped (budget 350) |
+| Widget bundle | 17.23 KB gzipped (budget 40) |
+
+#### Known gaps
+
+- **Sixteen processes on one laptop is not load.** It is enough to
+  falsify an exclusion claim — and it did — but it says nothing about
+  behaviour at the connection counts a busy host reaches, and nothing
+  about what MySQL does with advisory locks under a proxy such as
+  ProxySQL, which some managed hosting puts in the path.
+- **`NamedLock` fails open by design.** A `GET_LOCK` that errors is
+  treated as acquired, because these locks prevent duplicated work rather
+  than protect correctness. On a host where the function is unavailable
+  the stampede is back, silently, and nothing reports it.
+- **The scale corpus is synthetic and uniform.** Random vectors have no
+  topical structure, so the 182 ms and 67 MB describe the shape of the
+  work rather than a real customer's index — the same caveat the M1
+  benchmark carries and for the same reason.
+- **9,000 chunks is past the object-cache cliff and not past the
+  transient one.** The 4 MB transient ceiling is around sixteen thousand,
+  which was not seeded; the combined-versus-shard ratio makes the outcome
+  obvious but it is an extrapolation, not a measurement.
+
+### Scalability — the matrix is cached a source at a time now
+
+**Goal:** the fourth phase of the audit remediation. Two of the five items
+were delivered as scoped, one grew a second half once the tests refused
+it, and two are named below as not delivered rather than half-built.
+
+#### The cache entry was the size of everything a clerk knew
+
+The quantised matrix was cached as one blob per *source set*. Two
+consequences, and the second is worse than the first.
+
+It was too big. A clerk pointed at everything is one cache entry holding
+every vector, which passes Memcached's one-megabyte item limit at about
+five thousand chunks and the transient ceiling at sixteen thousand — and
+past either of those a refused write is indistinguishable from a cache
+miss, so every visitor message rebuilt from a full table scan. The entry
+below made that visible; it could not make it stop.
+
+And the unit was wrong. Keyed on a set, the number of possible entries is
+the number of source *combinations*: two clerks sharing nine of ten
+sources cached the overlap twice, and re-indexing one source had to
+orphan every combination that mentioned it.
+
+Shards are per source and joined at read. The cached unit is now bounded
+by one source rather than by a customer's whole knowledge base, there is
+one entry per source instead of one per combination, and re-indexing one
+of forty invalidates one of forty. The rebuild lock went with it, so a
+source being rebuilt no longer blocks the other thirty-nine.
+
+Joining is concatenation, because rows are fixed width. The case worth
+naming is a shard whose width disagrees: appending it would slide every
+row after it by a few bytes and silently corrupt every comparison from
+there on, so it is left out instead — losing one source's vectors, which
+the coarse pass already has a message for, rather than quietly returning
+wrong answers for all of them.
+
+#### The migration lock was not a lock, and only administrators triggered it
+
+Two problems that compound, which is why they are one entry.
+
+`migrate()` read a transient and then wrote one. Two requests arriving
+together both read nothing and both proceed. It survived because the DDL
+is written to be re-runnable — `CREATE TABLE IF NOT EXISTS`, guarded
+`ADD INDEX` — but that held only for as long as every future migration
+remembered to be idempotent, which is a property nothing checks.
+
+And migrations ran only on `admin_init`. Nothing guarantees an
+administrator ever visits: a background auto-update, a `wp plugin update`
+in a deploy script, or a site whose owner only looks at the front end all
+leave new code running against the old schema. The parts that keep
+running are exactly the ones with nobody watching — the widget answering
+visitors over REST, and every cron job.
+
+The lock is now `add_option()`, an INSERT against a unique index, with a
+staleness timeout so a process killed mid-migration cannot block the
+schema for ever. The check runs on `admin_init`, on `rest_api_init` and
+at the top of the job runner; it is a comparison of two integers when
+there is nothing to do, which is almost always.
+
+**`FootprintTest` refused the change until uninstall knew about it**,
+which is the test doing its job — the lock stopped being a transient and
+became an option, and an option that is not on the list outlives the
+plugin. It also surfaced a gap the list cannot close: the matrix rebuild
+locks are named after the source and pin they guard, so there is no fixed
+set to enumerate. `Footprint::optionPrefixes()` is new, swept with the
+same `esc_like()` discipline as the transients.
+
+#### A deleted source kept its counter for ever
+
+`hiveclerk_matrix_generation` held one entry per source, bumped on
+invalidation and never removed — read on every retrieval to build a key
+and rewritten whole on every invalidation. Deleting a source now forgets
+it rather than invalidating it, which is a different operation: an
+invalidated source will be rebuilt, a deleted one never will. Safe to
+return to generation zero because ids are auto-increment and never
+reissued, so no future source can be handed the number and find a stale
+shard under it.
+
+#### Not delivered
+
+Both of these were in the plan for this phase. Neither is hard; both have
+a decision in them that is not mine to guess, and half of either is worse
+than none.
+
+- **Nullable cost on messages and conversations.** The audit filed this
+  as a migration, and the migration is the easy part. `Message::$cost` is
+  a non-nullable float and `ChatService` coerces an unpriced call to
+  `0.0`, so a nullable column on its own would be a schema advertising a
+  capability nothing writes — the same shape as the `anonymise_ip`
+  setting that read as a privacy control and did nothing, and as the
+  reply-exit two entries below. The harder half is
+  `conversations.total_cost`, which is an accumulator: when one message
+  in a conversation is unpriced, NULL throws away what *is* known and a
+  sum understates in the direction nobody audits. "At least X, plus an
+  unknown" is the honest answer and there is nowhere to put it yet.
+  `usage_events` remains the one place where unknown money is recorded
+  as unknown.
+- **A cleanup path for a switched embedding model.** Old vectors stay
+  after a model change and every scan reads rows it discards. Removing
+  them is deleting a customer's index, irreversible without re-embedding
+  at their expense — and this product's own rule is that spending their
+  money is shown before it is committed to, not after. That makes it an
+  operator action with a cost on it, which is a screen. A repository
+  method with no caller would be dead code, and this file already has one
+  entry about an abstraction that described a system nobody built.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **633**, 2,264 assertions (4 new) |
+| Integration tests | 23, 71 assertions |
+| SEC-04 | 98/98 routes gated |
+
+- **Sharded retrieval was run against the real index**: 220 vectors
+  across 22 sources, 22 shards cached independently, and the same five
+  chunk ids returned cold and warm. That the answers are identical either
+  way is the assertion that matters — a join that dropped or reordered a
+  shard would change them.
+- **The migration lock and all three triggers were checked on the live
+  install**: `admin_init`, `rest_api_init` and the job runner all carry
+  the callback, a second claim is refused while the first holds, and no
+  lock row is left behind.
+- `M0011` from the entry below applied cleanly to the live database at
+  version 11.
+
+#### Known gaps
+
+- **Sharding was not measured at a size where it matters.** The
+  development corpus is 220 vectors across 22 sources; the cliff it
+  removes is at five thousand. What was verified is that the join is
+  correct and the shards are cached separately, not that a 50k-chunk site
+  now fits — that needs a corpus nobody here has.
+- **Still no concurrency measurement.** The per-source lock is reasoned
+  about and unit-tested; no load generator has been pointed at any of
+  this.
+- **The width-mismatch drop is silent to the visitor.** A shard left out
+  of the join reduces what can be retrieved and only the diagnostics say
+  so. The coarse pass has a message for the whole-query case; a single
+  bad shard among good ones does not.
+- **`optionPrefixes()` is a prefix DELETE across `wp_options`**, which
+  this file has previously argued against taking on. It is accepted here
+  because the names genuinely cannot be enumerated and the prefix is
+  distinctive, but it is a wider net than the option list and worth
+  knowing about.
+
+### Performance — and a fallback that was neither fast nor correct
+
+**Goal:** the third phase of the audit remediation. Six performance
+findings, of which the two most interesting turned out on inspection not
+to be what they were filed as.
+
+#### A re-index could take the site down
+
+Cache invalidation here is a generation bump: it orphans every key at
+once, costs nothing, and needs no list of what was cached. What it also
+does is expire the matrix for **every request simultaneously**. There was
+no lock on the rebuild, so the moment a source finished indexing, every
+visitor message in flight missed together and started the same scan of
+the embeddings table. At ten thousand chunks that is 128 ms and tens of
+megabytes each; at fifty thousand, 1.1 seconds and 113 MB each. On shared
+hosting with a handful of PHP workers that is not a slow page.
+
+One request now rebuilds and the rest answer from the keyword arm for the
+second or so it takes. They are told to go without rather than made to
+wait, because holding a PHP worker on a lock is the same resource
+exhaustion as running the scan, on hosting where workers are counted in
+single digits.
+
+The lock is `add_option()` — an INSERT against the unique index on
+`option_name`, so exactly one caller wins even with no persistent object
+cache, which is both the hosting where this matters most and the hosting
+where `set_transient()` is a read followed by a write and therefore not a
+lock at all. It is released in a `finally` and goes stale after thirty
+seconds, so a scan killed by the memory limit cannot wedge the rebuild
+permanently.
+
+#### The width-mismatch fallback was described as slow but correct
+
+It was slow and it was not correct. When a source is indexed with one
+embedding model and searched with another, the quantised widths disagree
+and the coarse pass was falling through to an exact scan over *every* id
+in the matrix — loading each candidate's float32 blob, about 60 MB at ten
+thousand chunks, on a single visitor message, against a 96 MB budget.
+
+Reading `CosineCalculator::score()` is what settled it: it returns `0.0`
+for any pair whose dimensions disagree, and a quantised width is a
+function of the dimension count. So every one of those candidates scored
+zero and none of them ranked. The fallback was an expensive way of
+producing nothing.
+
+It now produces nothing cheaply, and says why: the keyword arm still
+answers, and the note names re-indexing as the fix. The filed finding was
+"cap the fallback"; the right change was to delete it.
+
+#### The dashboard recounted all history on every load
+
+Every figure on the analytics screen is scoped to a day except one. To
+count leads that qualified today, the query first finds — for every lead
+that has *ever* crossed the threshold — the event where it happened, and
+only then filters to the day. That subquery grows with all history, and
+it ran on every dashboard request, twice, because the site-wide series
+and the per-clerk roster each asked for today separately.
+
+Today's figures are now counted at most once a minute and memoised within
+the request. A dashboard load costs one count instead of two; a refresh
+a few seconds later costs none.
+
+`M0011` adds `(lead_id, score_after, id)`, and the docblock is more
+careful than the finding was. `EXPLAIN` before the migration reads
+`type=index key=idx_lead Extra=Using where` — the grouping was already
+following index order, so there was no temporary table and no full scan.
+What it was doing was visiting the row behind every index entry to read a
+column the index did not carry. Afterwards: `Using where; Using index`.
+That removes one random read per score event, which is real on a long
+history and close to nothing on a short one. Measured on a development
+table of sixteen rows, where only the shape of the plan means anything.
+
+#### The documents list read every document body to render a title
+
+`forSource()` went through `SELECT *`, and the documents table holds the
+whole extracted body in a LONGTEXT column. The screen renders a title, a
+URL and three counts.
+
+The cheap fix was to name the columns and leave `Document::$content`
+empty. That is a trap: nothing reads the field on this path *today*, but
+`save()` writes it, and one future caller that loaded a row for a list,
+changed a title and saved it back would blank the body of every document
+it touched — and the next ingestion pass would report that as content
+that had changed rather than content that had been destroyed. So the list
+returns a `DocumentSummary` instead, which cannot be handed to `save()`
+at all.
+
+#### The stream buffer wrote proportionally to the answer's length
+
+A flush stores the whole reply so far, because the polling client is sent
+a `replace` and needs the complete text. With Redis that is a memory
+write and the 150 ms interval is free. Without one it is an option row
+rewritten in `wp_options`, so a ten-second answer was sixty-odd
+increasingly long writes for a single visitor.
+
+The interval is now 450 ms when every flush is a database row. Terminal
+events still force a write, so the finished answer lands the moment it is
+complete; what changes is that intermediate text arrives in slightly
+larger steps, on the hosts where the alternative is hammering the options
+table.
+
+**The rate limiter was deliberately not touched.** Each poll is one
+indexed upsert against a purpose-built table, and the ways to make it
+cheaper — counting every Nth request, or exempting polls — all mean the
+SEC-03 ceiling stops being a ceiling. A poll flood is what it is there
+for.
+
+#### Keyword search cannot see short terms, and now says so
+
+Measured on this MySQL 9.3: `innodb_ft_min_token_size` is 3, `warranty`
+matches, `AI` returns nothing at all. InnoDB does not index tokens below
+that length, and the variable needs a server restart and a rebuild of
+every full-text index to change — a plugin cannot touch it.
+
+The awkward part is *what* that excludes. The keyword arm exists to catch
+the part numbers, SKUs and error codes an embedding has nothing to grip
+on, and a two-character one is exactly the case it cannot see. Nothing
+can be done about it from inside the product, so the retrieval
+diagnostics now name the ignored terms rather than leaving whoever is
+testing a query to conclude that retrieval is broken.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **629**, 2,250 assertions (8 new) |
+| Integration tests | 23, 71 assertions |
+| SEC-04 | 98/98 routes gated |
+
+- **The rebuild lock was exercised against the real options table**, not
+  its fake: a second claim is refused while the first holds, a release
+  lets the next through, and no lock rows are left behind afterwards.
+- **`M0011` was applied to the live database** and the plan compared
+  before and after with `IGNORE INDEX`, which is where the overstated
+  version of this entry got corrected.
+- **The documents endpoint was driven through the REST stack**: HTTP 200,
+  the same seven fields, and the query that ran is the named projection
+  with no body in it.
+- The stream-buffer interval is asserted by counting writes across a
+  second of real appends, rather than by reading the constant back.
+
+#### Known gaps
+
+- **None of this was measured under concurrency.** The stampede is
+  reasoned about and locked against; no load generator has been pointed
+  at it, so "one rebuild instead of ten" is an argument from the lock's
+  semantics and a single-process test, not an observation.
+- **The keyword-only degradation has no ceiling.** On a site whose matrix
+  is too large to cache at all — the Memcached case the entry below
+  surfaced — every request misses, one rebuilds, and the rest are
+  permanently degraded rather than occasionally. That is better than
+  every request scanning, and it is not good. Sharding the matrix per
+  source is the fix and it is still not written.
+- **The analytics cache is a minute long and unconditional.** A site
+  watching a conversation land in real time sees today's counters lag by
+  up to that. Judged worth it against an admin request budget of 400 ms;
+  not measured against anybody's expectations.
+- **`M0011` runs on `admin_init` like every other migration**, so it
+  builds an index on a random admin page load. On a large `lead_scores`
+  that is a visible pause for whoever happens to be first through the
+  door after an update. The migration trigger surface is a known
+  architectural gap and this entry does not close it.
+- **The short-token note is client-side of nothing.** It reaches the
+  retrieval diagnostics, which the knowledge search preview shows; a
+  visitor whose question was partly unsearchable is told nothing, which
+  is correct, and an operator who never opens that screen learns nothing
+  either.
+
+### Security hardening — including a bypass none of the parts had
+
+**Goal:** the second phase of the audit remediation. The blockers in the
+entry below were things that did not work. These are mostly things that
+worked exactly as written, and were wrong anyway.
+
+#### Every safety valve opened, and nobody added them up
+
+Five decisions, each defensible on its own and each recorded in this file
+as deliberate: a signature that cannot be verified reports `unreachable`;
+a missing sodium extension skips verification rather than failing closed;
+an unauthenticated response is discarded whole; `unreachable` keeps
+whatever entitlements the site already had; and the state re-checks every
+twelve hours.
+
+Composed, with no time limit anywhere in the chain, they meant that
+**anyone able to stop a site reaching the licence server kept that site on
+its paid tier for ever.** A hosts entry, a firewall rule, a DNS answer.
+Not one of the five is a bug and the composition was never reviewed,
+because each was decided in a different entry.
+
+There is now a ceiling. Thirty days without an answer we could
+authenticate and the site drops to free entitlements — clerks keep
+answering, knowledge stays indexed, nothing is deleted, which is the same
+degradation an expired licence already gets.
+
+Two things made this harder than adding a timestamp comparison:
+
+**`checked_at` could not measure it.** It is written on every attempt,
+including the ones that fail, so on a site that can never reach the server
+it advances every twelve hours indefinitely. A grace period measured
+against it would never expire. `confirmed_at` is new and records only
+answers we could believe; the unreachable branch carries it forward
+untouched rather than stamping it, which is the single line the whole
+mechanism rests on.
+
+**The upgrade path could have switched off every customer at once.**
+Installs upgrading into this version have no `confirmed_at` — the field
+did not exist when their state was written. Treating a missing timestamp
+as "never confirmed" would have degraded every paying site simultaneously,
+on the strength of a field that had never been written, which is a more
+damaging version of the exact failure the ceiling exists to prevent. A
+licence with no confirmation on record is left alone; the anchor is set by
+the next successful check, within twelve hours.
+
+The new status is `Unverified`, deliberately **not** `Invalid`. We still
+know nothing about the key, so we still claim nothing about it, and the
+guidance points at the network rather than sending an operator to hunt for
+a typo in a key that is fine.
+
+#### A chunk setting was a way to spend the customer's money
+
+`ChunkOptions::fromConfig()` clamped `chunk_tokens` and `chunk_overlap`
+and passed `chunk_target` straight through to a constructor whose floor is
+`1`. The target divides a page into chunks and every chunk is an embedding
+call, so `chunk_target: 1` turns one re-index into roughly a chunk per
+sentence — and a bill. `SourceController::clean()` accepts arbitrary
+config keys, so it was reachable over REST by anyone holding
+`manage_knowledge`, which includes roles deliberately never trusted with
+the API key itself. SEC-03 says cost exhaustion is cheaper to execute than
+a denial of service; this was a cheap one.
+
+`fromConfig()` now floors the target, and the door refuses out-of-range
+values with a 422 rather than clamping them. Clamping is right where
+configuration written by an older version is read back and cannot be
+refused retrospectively; at a request boundary it is wrong, because an
+operator who asks for 4 and is quietly given 64 has been told their
+setting was accepted when it was not.
+
+#### An IP hash that was not hashing
+
+`IpHasher`, `AuditLogger`, `PublicController::ipKey()` and
+`UnsubscribeController::clientKey()` all read the `AUTH_SALT` constant and
+fell back to an empty string. The IPv4 space is four billion entries, so
+an unsalted digest of an address is enumerable end to end — "a reversible
+identifier wearing a hash's clothes", which is the phrase `IpHasher`'s own
+docblock uses for what it must never produce. Nothing reported being in
+that state.
+
+All four now use `wp_salt()`, which cannot come back empty: core generates
+and stores a per-install value when the constants are absent. Stored
+digests change once as a result, which is safe here because `ip_hash` is
+only ever written and read back — no query anywhere matches on it.
+
+#### A stored key that could not be opened looked like one that worked
+
+`Encryptor::decrypt()` returns null for tampering, for rotated WordPress
+salts and for a database restored without its salt option, and every
+caller reads null as "not configured". The mask is stored as plaintext and
+kept rendering regardless, so the settings screen showed a configured
+provider with a plausible masked key while every request using it failed
+with an error naming the provider.
+
+`describe()` now carries `is_readable`, false only in the state that is
+genuinely broken: ciphertext stored and unopenable. This narrows the
+class's own "nothing decrypts on a read path" rule, and the docblock says
+so rather than quietly breaking it — the probe decrypts to throw the
+result away, on an admin screen, and never returns anything but a boolean.
+
+#### The licence server's rate limiter could be told who to count
+
+`X-Forwarded-For` grows by appending: each proxy adds what it observed to
+the right. The limiter took the **left-most** entry and asserted in a
+comment that this was what the edge observed. It is the opposite — the
+left-most is whatever the original client sent. Behind any proxy that
+appends without also setting `CF-Connecting-IP` or `X-Real-IP`, every
+request could carry a freshly invented identity, and rate limiting is the
+only thing standing between `/activate` and unbounded key guessing.
+
+Now read right to left. With two proxies in front the right-most is the
+inner proxy rather than the client, so everyone behind it shares a bucket
+— the over-restrictive failure rather than the open one, and the
+single-value headers checked first cover the common shape.
+
+#### Smaller things
+
+- **A Slack webhook URL is a bearer credential** and matched none of the
+  audit log's redaction hints, so it was written in full and published
+  through `hiveclerk/audit/recorded` — an action whose docblock promises
+  it carries no secrets. `webhook` is now a hint. A bare `url` deliberately
+  is not: it would redact `page_url`, `site_url` and `document_url`, which
+  are the context that makes an entry worth reading, and redacting the
+  whole log to catch one field trades a working control for a useless one.
+- **`Credentials::__sleep()` did nothing for `wp_json_encode()`**, which
+  reads the public properties directly. The class now implements
+  `JsonSerializable` and throws.
+- **`LicenceClient` posted the customer's key with WordPress's default
+  five redirects**, replaying the body to each new location, while every
+  other outbound call in the codebase sets `redirection => 0`.
+- **`uninstall.php` required `vendor/autoload.php` unguarded.** A missing
+  or broken vendor directory fatals inside WordPress's uninstall flow and
+  strands the data; returning early leaves it removable by reinstalling.
+- **`as_schedule_recurring_action()` was not in `isAvailable()`**, which is
+  the list that decides whether the Action Scheduler driver is selected at
+  all. Latent rather than live — every build shipping the other four ships
+  this one — but a function called and not named there is a fatal waiting
+  for a build that disagrees.
+
+#### Corrected in this file
+
+The entry below records the licence server's trusted-proxy constant as
+`APPOINTIVA_LICENSE_TRUSTED_PROXY`. It is `HIVECLERK_LICENSE_TRUSTED_PROXY`
+in the code and in the server's own README, and always has been since the
+rename. Anyone following that entry would have defined a constant nothing
+reads and believed forwarded headers were being honoured.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **621**, 2,236 assertions (20 new) |
+| Integration tests | **23**, 71 assertions (1 new) |
+| SEC-04 | 98/98 routes gated |
+
+- **The chunk-config refusal was driven through the real REST stack**, not
+  its unit. Four hostile bodies — target 1, target 4, overlap 0.95, size
+  999999 — each answered 422 with the reason; a target of 200 created a
+  source. The clamp is unit-tested separately, because the two are
+  different defences and the outer one can be removed by a refactor
+  without the inner one noticing.
+- **The forwarded-header fix was exercised against six header shapes**
+  through the live licence server plugin, including the attack it closes:
+  rotating the left-most entry no longer changes the bucket the request
+  counts against.
+- The grace ceiling is covered by four tests: an ordinary week-long outage
+  changes nothing, an exhausted grace stops entitlements, the result
+  reports as `Unverified` with the tier still recorded, and a licence
+  stored before `confirmed_at` existed is left alone.
+
+#### Known gaps
+
+- **The grace ceiling has never run for thirty days.** It is tested by
+  moving stored timestamps, not by waiting, and no install has crossed it.
+  The upgrade path in particular is argued from a null check and a test,
+  and the first real evidence will be the first customer whose licence
+  server was unreachable for a month.
+- **Thirty days is a judgement, not a measurement.** Long enough that no
+  ordinary outage reaches it, short enough not to be a permanent bypass.
+  Nothing was measured to choose it.
+- **`is_readable` is not rendered anywhere.** The API carries it; the
+  settings screen does not show it yet, so the state is diagnosable
+  through the REST response and not yet visible to the operator who needs
+  it. Rendering it means rebuilding the admin bundle, and see the note
+  below on why that is currently unsafe.
+- **The built `assets/` cannot be reproduced.** Tailwind 4 scans the
+  project directory for class names, so a stray file at the plugin root
+  becomes build input: a conversation export sitting there put a phantom
+  `.top-20` utility into the admin CSS during this work. The committed
+  assets were correct and were restored rather than replaced, but until
+  the content scan is bounded with an explicit `@source`, any rebuild on
+  any machine can differ for reasons that have nothing to do with the
+  source.
+- **Nothing here is a fix for DNS rebinding, the matrix rebuild stampede,
+  or the analytics scans.** Those are the performance and scalability
+  phases and they are untouched.
+
+### Five things an audit found, and one of them was never built
+
+**Goal:** close the release blockers from a full changelog-verification
+audit. The audit read every claim in this file against the code. Most
+held; these five did not, and they share a shape worth naming — four of
+the five were *silent*. Nothing errored, no test failed, and every gate
+stayed green while the product did something other than what this file
+said it did.
+
+#### A control this file promised for four sprints did not exist
+
+`ExitCondition`'s docblock stated that replying always exits a sequence,
+that it is not configurable, and that "the engine enforces it for every
+sequence". None of that was true. `EnrolmentService::exitAll()` had no
+callers, no exit condition covered it, and — the part that explains the
+rest — **no signal existed that could have driven one.** This product has
+no inbound email: no address, no mailbox poller, no webhook. A reply to
+one of its emails is not an event it can observe. The claim described an
+intention, read as a statement of fact, and so was never implemented and
+never missed.
+
+What ships is the case the product *can* see and the one that actually
+matters: **coming back to talk to a clerk stops a follow-up that has
+already been sent.** `exitOnEngagement()` runs from
+`hiveclerk/chat/replied`, on every visitor message whose conversation
+carries a lead.
+
+The guard on it is the whole design. A lead is normally captured *during*
+a conversation, so their next message arrives seconds after enrolment —
+exiting on any engagement would close every sequence before it sent
+anything, and the feature would quietly never work. `currentStep` is the
+position of the *next* step to send, so zero means nothing has gone out
+and there is nothing to stop. Those enrolments are left alone.
+
+The docblock now says what is enforced, what is not, and why the
+distinction is a capability rather than a preference.
+
+#### Encrypting a provider key could fatal, and the fix needs no migration
+
+`Encryptor::key()` passed the WordPress salts to `hash_hkdf()` as key
+material. `hash_hkdf()` rejects an empty key, so an install with
+`AUTH_KEY`, `SECURE_AUTH_KEY` and `LOGGED_IN_KEY` all blank threw an
+uncaught `ValueError` on **every read and write of a provider key** — and
+surfaced it as a fatal pointing at a hash function rather than at the
+configuration that caused it. Sprint 5 recorded this as a known gap and
+fixed the same inversion in `SessionService`. This file was not touched,
+and the two have derived keys in opposite argument orders ever since.
+
+`v2` swaps them: the per-install salt is the key material and is generated
+on demand, so it cannot be empty; the WordPress salts become the HKDF
+salt, which RFC 5869 explicitly permits to be empty. Both versions
+decrypt and only `v2` is written, so a secret upgrades the next time it is
+saved and **nothing has to walk the three stores that hold one.** A
+migration that re-keyed them would have had one failure mode — a value
+that does not decrypt reads as "not configured" — and it would have
+silently discarded the customer's API keys, licence key and CRM
+credentials at once.
+
+Worth being precise about what degrades: with no WordPress salts defined
+the key now rests on the per-install salt alone, which is in the database.
+The docblock's "both must be stolen together" holds for every normally
+configured site and not for that one, and it now says so instead of
+claiming otherwise.
+
+#### A masked API key could be the API key
+
+`mask()` returned seven leading and four trailing characters. At lengths
+nine to eleven those overlap, so the "masked" value — the one written to
+an option and handed to the SPA precisely so the real key never leaves the
+server — *was* the key. Nothing validated length before masking. Anything
+shorter than twelve characters is now a fixed run of bullets, fixed so the
+length is not disclosed either.
+
+#### An erasure could report success and leave the transcripts
+
+`PersonalDataEraser` read a lead's conversations once with a limit of a
+thousand, purged those, and then deleted the lead. Anyone with more than a
+thousand had the remainder left on the site **and the only route to it
+removed** — the lead row is what identifies them. WordPress reported the
+erasure complete, and the site owner signed it off as complete.
+Unreachable is not erased; this was the class's own phrase for the failure
+it had.
+
+Now batched, and the ordering rule is inverted from the obvious one: the
+lead is deleted **last**, only once its transcripts are gone. A pass that
+runs out of budget reports `done: false` and leaves the lead in place so
+the next call can find it again by email hash and carry on. Twenty passes
+of five hundred, then hand back — a ceiling that exists so one pathological
+record cannot hold a request open until the execution limit kills it
+mid-erasure, not because reaching it is expected.
+
+#### The vector cache could fail on every write and report itself healthy
+
+`wp_cache_set()` reports a refused item only in its return value, and that
+value was discarded. Memcached caps a single item at 1 MB by default,
+which the quantised matrix passes at roughly five thousand chunks. Past
+that, **every visitor message rebuilt the matrix from a full table scan**
+while `describe()` reported an object-cache backend with `max_cacheable`
+of null — no limit at all. From the read side a refused write and a cold
+cache are the same thing: a miss.
+
+There is no second attempt to make, which is the part worth recording.
+With a persistent object cache `set_transient()` routes to that same
+backend and would be refused identically, so falling back to it would
+achieve nothing. The refusal is recorded instead, with the size that was
+rejected, and `describe()` now carries a `cacheable` flag and a note
+saying which limit was hit and what changes it. The flag expires on its
+own, so a host that gains Redis stops reporting the problem without
+anything having to clear it.
+
+This is detection, not a fix. Sharding the matrix per source is the fix
+and it is not written.
+
+#### Verified
+
+Local nginx / PHP-FPM 8.4.7, MySQL 9.3.0, WordPress 7.0.2.
+
+| Criterion | Result |
+|---|---|
+| Gates | PHPCS, PHPStan L8, domain purity, `tsc`, ESLint — clean |
+| Unit tests | **601**, 2,200 assertions (20 new) |
+| Integration tests | 22, 70 assertions |
+| SEC-04 | **98/98 routes gated** |
+| Admin bundle | 179.93 KB gzipped (budget 350) |
+| Widget bundle | 17.23 KB gzipped (budget 40) |
+
+- **The sequence exit was driven through the real hook against the real
+  database**, not just its service. The Email module's listener was
+  isolated by reflection — other modules listen on `hiveclerk/chat/replied`
+  and want a real `ChatOutcome` and `Agent` — and the hook was fired:
+  the enrolment on step 1 came back `exited` with `reason=engaged`, the
+  one on step 0 came back `active`, and a conversation with no lead
+  attached was a no-op. Asserting the service alone would have proved
+  exactly what the audit found wrong with the previous claim: that the
+  behaviour is correct wherever it is called from, and nothing about
+  whether anything calls it.
+- `KeyStorageTest` passes unchanged against the live site, which is what
+  says the `v2` derivation works through the real option store and not
+  only in a test with a fixed salt.
+
+#### Known gaps
+
+- **The empty-salt case is argued, not measured.** The fix rests on the
+  per-install salt being impossible to leave empty, which is true by
+  construction — `salt()` generates it on first use. It is not asserted by
+  a test, because the salts are PHP constants defined by the bootstrap and
+  a constant cannot be undefined inside a running process. What is
+  asserted is that both derivations decrypt and only `v2` is written.
+- **Engagement is not a reply.** A person who answers the email itself,
+  rather than returning to the widget, still receives the rest of the
+  sequence. Closing that needs an inbound channel and the bounce and
+  threading handling that comes with it. It is a feature, and naming it
+  here is the point — the previous entry's mistake was implying otherwise.
+- **A conversation in human-handoff mode may not fire
+  `hiveclerk/chat/replied`**, since that hook is the clerk answering. A
+  lead who only ever talks to a human after takeover could keep receiving
+  a sequence. Not investigated further.
+- **The refused-cache flag is not on the system status screen.** It is in
+  the vector store's `describe()`, which the knowledge diagnostics
+  endpoint carries. Putting it on the status page means giving
+  `SystemController` a dependency on a module a site can filter out, and
+  that was not worth doing for this entry.
+- **Nothing here touches the other four release blockers' neighbours** —
+  the licence server's `X-Forwarded-For` parsing, the chunk-configuration
+  cost-exhaustion vector, the matrix rebuild stampede, or the IP-hash
+  empty-salt fallback. They are the next phase, and they are all still
+  open.
+
 ### Questions were being embedded as answers
 
 **Goal:** improve retrieval accuracy. What was found instead was a defect
@@ -615,9 +1642,11 @@ had stopped gating.
   internet.** `REMOTE_ADDR` is the load balancer on a licence server that
   sits behind Cloudflare, so the first busy minute locks out every customer
   at once. Forwarded headers are now read — but only when
-  `APPOINTIVA_LICENSE_TRUSTED_PROXY` says a proxy we control is the sole
+  `HIVECLERK_LICENSE_TRUSTED_PROXY` says a proxy we control is the sole
   route in, because a server that trusts `X-Forwarded-For` unconditionally
   has no rate limiting at all and key guessing becomes unbounded.
+  (Corrected: this entry originally named the constant
+  `APPOINTIVA_LICENSE_TRUSTED_PROXY`, which nothing reads.)
 - **`/update-check` took a licence key with no allowance**, which made it
   the cheapest place on the server to guess keys from.
 - **Seats could be over-allocated.** Counting activations and then

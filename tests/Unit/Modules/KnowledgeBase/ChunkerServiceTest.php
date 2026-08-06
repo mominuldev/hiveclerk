@@ -248,6 +248,64 @@ final class ChunkerServiceTest extends TestCase {
 		$this->assertLessThan( 500, count( $chunks ) );
 	}
 
+	/**
+	 * A chunk target is a divisor on a page, and every chunk costs money.
+	 *
+	 * `chunk_target: 1` would put roughly every sentence in its own chunk,
+	 * and each one is an embedding call on the customer's account. The
+	 * constructor's floor is 1, which is right for the packing tests above
+	 * and wrong for a value that arrived in a request body — so
+	 * `fromConfig()` carries its own floor.
+	 */
+	public function testAChunkTargetFromConfigCannotGoBelowTheFloor(): void {
+		$this->assertSame(
+			ChunkOptions::MIN_TARGET_TOKENS,
+			ChunkOptions::fromConfig( array( 'chunk_target' => 1 ) )->targetTokens
+		);
+
+		$this->assertSame(
+			ChunkOptions::MIN_TARGET_TOKENS,
+			ChunkOptions::fromConfig( array( 'chunk_target' => -50 ) )->targetTokens
+		);
+	}
+
+	/**
+	 * A target above the size a chunk may reach is not a target.
+	 */
+	public function testAChunkTargetCannotExceedTheChunkCeiling(): void {
+		$options = ChunkOptions::fromConfig(
+			array(
+				'chunk_tokens' => 300,
+				'chunk_target' => 9999,
+			)
+		);
+
+		$this->assertSame( 300, $options->targetTokens );
+	}
+
+	/**
+	 * The floor is what actually bounds the bill.
+	 */
+	public function testAHostileTargetProducesNoMoreChunksThanTheFloorDoes(): void {
+		$document = $this->longDocument();
+
+		$hostile = $this->chunker->chunk(
+			$document,
+			1,
+			1,
+			ChunkOptions::fromConfig( array( 'chunk_target' => 1 ) )
+		);
+
+		$floored = $this->chunker->chunk(
+			$document,
+			1,
+			1,
+			ChunkOptions::fromConfig( array( 'chunk_target' => ChunkOptions::MIN_TARGET_TOKENS ) )
+		);
+
+		$this->assertSame( count( $floored ), count( $hostile ) );
+	}
+
 	// ------------------------------------------------------------ edge cases
 
 	public function testAnEmptyDocumentProducesNoChunks(): void {

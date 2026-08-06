@@ -20,6 +20,7 @@ use Hiveclerk\Domain\Knowledge\ChunkRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\Chunk;
 use Hiveclerk\Domain\Knowledge\Document;
 use Hiveclerk\Domain\Knowledge\DocumentRepositoryInterface;
+use Hiveclerk\Domain\Knowledge\DocumentSummary;
 use Hiveclerk\Domain\Knowledge\KnowledgeSource;
 use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\SourceStatus;
@@ -35,6 +36,7 @@ use Hiveclerk\Modules\KnowledgeBase\Jobs\IngestSourceJob;
 use Hiveclerk\Modules\KnowledgeBase\Services\EmbeddingService;
 use Hiveclerk\Modules\KnowledgeBase\Services\IngestionProgress;
 use Hiveclerk\Modules\KnowledgeBase\Services\IngestionService;
+use Hiveclerk\Modules\KnowledgeBase\Text\ChunkOptions;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -306,13 +308,20 @@ final class SourceController extends AbstractController {
 			);
 		}
 
+		$config  = $this->config( $request );
+		$invalid = $this->chunkConfigError( $config );
+
+		if ( $invalid instanceof WP_Error ) {
+			return $invalid;
+		}
+
 		$source = new KnowledgeSource(
 			id: null,
 			uuid: Uuid::generate(),
 			name: $this->name( $request, $type ),
 			type: $type,
 			status: SourceStatus::Pending,
-			config: $this->config( $request ),
+			config: $config,
 			syncSchedule: $this->schedule( $request ),
 		);
 
@@ -353,7 +362,14 @@ final class SourceController extends AbstractController {
 		}
 
 		if ( null !== $request->get_param( 'config' ) ) {
-			$source->config = $this->config( $request );
+			$config  = $this->config( $request );
+			$invalid = $this->chunkConfigError( $config );
+
+			if ( $invalid instanceof WP_Error ) {
+				return $invalid;
+			}
+
+			$source->config = $config;
 		}
 
 		if ( null !== $request->get_param( 'sync_schedule' ) ) {
@@ -408,11 +424,12 @@ final class SourceController extends AbstractController {
 		$this->stored->deleteForSource( $id );
 		$this->sources->delete( $id );
 
-		// The cached matrix is keyed on a source set, not a source, so a
-		// deleted source is still inside every cached combination that
-		// mentioned it. Left alone, retrieval would keep scanning — and
-		// citing — content the customer has just removed.
-		$this->vectors->invalidate( array( $id ) );
+		// Forgotten rather than invalidated. Invalidating bumps the
+		// source's generation so its shard is rebuilt next time, which is
+		// what should happen while the source still exists; this one is
+		// gone, so the counter goes with it rather than sitting in the
+		// option for the life of the install.
+		$this->vectors->forgetSource( $id );
 
 		$this->audit->record(
 			'knowledge.source.deleted',
@@ -504,7 +521,7 @@ final class SourceController extends AbstractController {
 
 		return ApiResponse::collection(
 			array_map(
-				static fn ( Document $document ): array => array(
+				static fn ( DocumentSummary $document ): array => array(
 					'id'          => $document->id,
 					'title'       => $document->title,
 					'url'         => $document->url,
@@ -733,6 +750,80 @@ final class SourceController extends AbstractController {
 		return in_array( $schedule, array( 'manual', 'on_save', 'daily', 'weekly' ), true )
 			? $schedule
 			: 'manual';
+	}
+
+	/**
+	 * Refuse chunk settings that are outside the range they are honoured in.
+	 *
+	 * `ChunkOptions::fromConfig()` clamps, because it reads configuration
+	 * written by older versions and cannot refuse it retrospectively. This
+	 * is the door, and at a door clamping is the wrong move: an operator
+	 * who asks for a chunk target of 4 and is quietly given 64 has been
+	 * told their setting was accepted when it was not, and will read the
+	 * value back from the form believing it is in force.
+	 *
+	 * The bound matters beyond tidiness. The target divides a page into
+	 * chunks and every chunk is an embedding call, so a small enough value
+	 * turns one re-index into a bill the customer never agreed to — and
+	 * writing a source needs `manage_knowledge`, which roles that are
+	 * deliberately never given the API key still hold.
+	 *
+	 * @param array<string, mixed> $config Cleaned configuration.
+	 * @return WP_Error|null
+	 */
+	private function chunkConfigError( array $config ): ?WP_Error {
+		$max = ChunkOptions::ABSOLUTE_MAX_TOKENS;
+		$min = ChunkOptions::MIN_TARGET_TOKENS;
+
+		if ( isset( $config['chunk_tokens'] )
+			&& ( ! is_numeric( $config['chunk_tokens'] )
+				|| (int) $config['chunk_tokens'] < $min
+				|| (int) $config['chunk_tokens'] > $max ) ) {
+			return ApiResponse::error(
+				ErrorCode::VALIDATION_FAILED,
+				sprintf(
+					'A chunk size has to be between %d and %d tokens. Nothing was saved.',
+					$min,
+					$max
+				),
+				422
+			);
+		}
+
+		$ceiling = isset( $config['chunk_tokens'] ) && is_numeric( $config['chunk_tokens'] )
+			? (int) $config['chunk_tokens']
+			: $max;
+
+		if ( isset( $config['chunk_target'] )
+			&& ( ! is_numeric( $config['chunk_target'] )
+				|| (int) $config['chunk_target'] < $min
+				|| (int) $config['chunk_target'] > $ceiling ) ) {
+			return ApiResponse::error(
+				ErrorCode::VALIDATION_FAILED,
+				sprintf(
+					'A chunk target has to be between %d tokens and the chunk size of %d. '
+						. 'Smaller targets multiply the number of chunks, and every chunk is '
+						. 'an embedding you pay for. Nothing was saved.',
+					$min,
+					$ceiling
+				),
+				422
+			);
+		}
+
+		if ( isset( $config['chunk_overlap'] )
+			&& ( ! is_numeric( $config['chunk_overlap'] )
+				|| (float) $config['chunk_overlap'] < 0.0
+				|| (float) $config['chunk_overlap'] > 0.5 ) ) {
+			return ApiResponse::error(
+				ErrorCode::VALIDATION_FAILED,
+				'Chunk overlap has to be between 0 and 0.5. Past half a chunk every passage '
+					. 'is stored and embedded twice. Nothing was saved.',
+				422
+			);
+		}
+
+		return null;
 	}
 
 	/**

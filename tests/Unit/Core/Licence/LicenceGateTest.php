@@ -115,6 +115,68 @@ final class LicenceGateTest extends TestCase {
 		self::assertNotNull( $gate->chunkRefusal( 9000 ) );
 	}
 
+	/**
+	 * An outage must not cost a paying customer their features.
+	 *
+	 * This is the case the grace period exists to protect, and it is the
+	 * reason the ceiling is thirty days rather than one.
+	 */
+	public function testAnOrdinaryOutageChangesNothing(): void {
+		$this->unreachableSince( '2026-07-29T00:00:00+00:00' );
+
+		self::assertTrue( $this->gate()->allows( Feature::Crm ) );
+	}
+
+	/**
+	 * The hole this closes: every failure mode here opens, and with no
+	 * time limit they compose into a permanent bypass. Anyone able to keep
+	 * this site from reaching the licence server — a hosts entry, a
+	 * firewall rule, a DNS answer — kept it on its paid tier for ever.
+	 */
+	public function testEntitlementsStopOnceTheGracePeriodIsExhausted(): void {
+		$this->unreachableSince( '2026-06-01T00:00:00+00:00' );
+
+		$gate = $this->gate();
+
+		self::assertFalse( $gate->allows( Feature::Crm ) );
+		self::assertFalse( $gate->allows( Feature::EmailSequences ) );
+	}
+
+	/**
+	 * Lapsing this way is still not a claim about the key.
+	 *
+	 * A failed check says nothing about whether a licence is real, so
+	 * reporting it as invalid would send an operator hunting for a typo in
+	 * a key that is perfectly good. The status stays honest and the
+	 * guidance points at the network.
+	 */
+	public function testAnExhaustedGraceIsReportedAsUnverifiedNotInvalid(): void {
+		$this->unreachableSince( '2026-06-01T00:00:00+00:00' );
+
+		$licence = $this->service()->current();
+
+		self::assertSame( LicenceStatus::Unverified, $licence->status );
+		self::assertNotSame( LicenceStatus::Invalid, $licence->status );
+		self::assertSame( Tier::Pro, $licence->tier, 'what was bought is still recorded' );
+		self::assertSame( Tier::Free, $licence->effectiveTier() );
+		self::assertStringContainsString( 'has not been rejected', (string) $licence->status->guidance() );
+	}
+
+	/**
+	 * The upgrade path, and the one that could have broken every customer.
+	 *
+	 * Installs upgrading into this version have no `confirmed_at` — the
+	 * field did not exist when their state was written. Treating a missing
+	 * timestamp as "never confirmed" would take paid features away from
+	 * every one of them at once, on the strength of a field that has never
+	 * been written.
+	 */
+	public function testALicenceStoredBeforeTheFieldExistedIsLeftAlone(): void {
+		$this->unreachableSince( '' );
+
+		self::assertTrue( $this->gate()->allows( Feature::Crm ) );
+	}
+
 	public function testTheFreeClerkLimitRefusesTheSecondHireNotTheFirst(): void {
 		$gate = $this->gate();
 
@@ -164,14 +226,29 @@ final class LicenceGateTest extends TestCase {
 	 */
 	private function activate( Tier $tier, LicenceStatus $status = LicenceStatus::Active ): void {
 		$this->state = array(
-			'tier'       => $tier->value,
-			'status'     => $status->value,
-			'masked'     => 'HVC-…9f2a',
-			'sites'      => 1,
-			'expires_at' => null,
-			'checked_at' => '2026-08-05T00:00:00+00:00',
-			'customer'   => null,
+			'tier'         => $tier->value,
+			'status'       => $status->value,
+			'masked'       => 'HVC-…9f2a',
+			'sites'        => 1,
+			'expires_at'   => null,
+			'checked_at'   => '2026-08-05T00:00:00+00:00',
+			'customer'     => null,
+			'confirmed_at' => '2026-08-05T00:00:00+00:00',
 		);
+	}
+
+	/**
+	 * Put the site in the state an attacker who can block our server wants
+	 * it in: unreachable, and confirmed this long ago.
+	 *
+	 * @param string $confirmedAt When the last believable answer arrived, or ''
+	 *                            for a licence stored before the field existed.
+	 * @return void
+	 */
+	private function unreachableSince( string $confirmedAt ): void {
+		$this->activate( Tier::Pro, LicenceStatus::Unreachable );
+
+		$this->state['confirmed_at'] = '' === $confirmedAt ? null : $confirmedAt;
 	}
 
 	/**
@@ -191,15 +268,22 @@ final class LicenceGateTest extends TestCase {
 	 * @return LicenceGate
 	 */
 	private function gate(): LicenceGate {
+		return new LicenceGate( $this->service() );
+	}
+
+	/**
+	 * The licence service, reading the same stored state as the gate.
+	 *
+	 * @return LicenceService
+	 */
+	private function service(): LicenceService {
 		$clock = new FrozenClock( new DateTimeImmutable( '2026-08-05', new DateTimeZone( 'UTC' ) ) );
 
-		return new LicenceGate(
-			new LicenceService(
-				new LicenceClient(),
-				new Encryptor(),
-				new AuditLogger( new InMemoryAudit(), $clock ),
-				$clock
-			)
+		return new LicenceService(
+			new LicenceClient(),
+			new Encryptor(),
+			new AuditLogger( new InMemoryAudit(), $clock ),
+			$clock
 		);
 	}
 }

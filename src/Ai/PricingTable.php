@@ -33,6 +33,13 @@ final class PricingTable {
 	 * The date these figures were last checked against provider pages.
 	 *
 	 * Surfaced in the UI so nobody mistakes an estimate for an invoice.
+	 *
+	 * It is the date the *oldest* row was verified, not the newest. The
+	 * Google entries were re-checked on 2026-08-06 and the rest were not,
+	 * so moving this forward would claim a check of Anthropic, OpenAI and
+	 * Azure prices that nobody performed. A date that understates how
+	 * fresh some rows are is harmless; one that overstates it is the same
+	 * class of mistake as reporting an unpriced call as free.
 	 */
 	public const AS_OF = '2026-02-01';
 
@@ -166,10 +173,36 @@ final class PricingTable {
 			'openai:text-embedding-3-large' => new Pricing( 0.13 ),
 
 			// Google.
+			//
+			// The 3.x families are listed before the 2.5 ones only for
+			// readability; `longestPrefixMatch()` decides what a dated id
+			// resolves to, and `gemini-3.1-flash-lite` cannot collide with
+			// `gemini-3.1-flash` because no such family is published.
+			//
+			// Audio input on 3.1 Flash-Lite is billed at $0.50 rather than
+			// $0.25. Not modelled: `Pricing` carries one input rate, this
+			// product sends text, and a second rate that nothing can reach
+			// would be a number nobody could check.
+			'google:gemini-3.5-flash'       => new Pricing( 1.50, 9.00 ),
+			'google:gemini-3.1-flash-lite'  => new Pricing( 0.25, 1.50 ),
 			'google:gemini-2.5-pro'         => new Pricing( 1.25, 10.00 ),
 			'google:gemini-2.5-flash'       => new Pricing( 0.30, 2.50 ),
 			'google:gemini-2.5-flash-lite'  => new Pricing( 0.10, 0.40 ),
 			'google:text-embedding-004'     => new Pricing( 0.0 ),
+
+			/*
+			 * Priced, and still reported unpriced on every call — which is
+			 * correct, and worth explaining here because it looks like a
+			 * missing entry and is not.
+			 *
+			 * Google's `batchEmbedContents` returns no token usage, so
+			 * `GoogleProvider` reports `tokensIn: 0` and `AiService` records
+			 * the cost as unknown rather than multiplying this rate by zero.
+			 * A site indexing through Gemini therefore sees its embedding
+			 * calls counted as unpriced no matter what this row says. The
+			 * fix is a token count from the provider or an estimate that
+			 * declares itself as one, not a price.
+			 */
 			'google:gemini-embedding-001'   => new Pricing( 0.15 ),
 
 			// Azure bills the same rates under deployment names, so the

@@ -22,6 +22,7 @@ use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Support\ClockInterface;
 use Hiveclerk\Core\Support\RateLimiter;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
+use Hiveclerk\Domain\Conversation\Conversation;
 use Hiveclerk\Domain\Conversation\MessageRepositoryInterface;
 use Hiveclerk\Domain\Email\EmailLogRepositoryInterface;
 use Hiveclerk\Domain\Email\EnrollmentRepositoryInterface;
@@ -235,6 +236,33 @@ final class EmailModule extends AbstractModule {
 			function ( Lead $lead ): void {
 				$this->enrolment()->onTrigger( $lead, TriggerType::ScoreThreshold );
 			}
+		);
+
+		/*
+		 * Coming back to a clerk stops a follow-up that has already been
+		 * sent. This is the closest thing the product can observe to "they
+		 * replied": there is no inbound email channel, so an actual reply
+		 * to one of these emails is invisible here — but a person who
+		 * answers by talking to the clerk again is the case that matters,
+		 * and continuing to email them is the failure worth preventing.
+		 *
+		 * On the chat reply path, so it does the cheapest possible thing
+		 * for the common case: a conversation with no lead attached costs
+		 * one null check and no query.
+		 */
+		add_action(
+			'hiveclerk/chat/replied',
+			function ( mixed $outcome, Conversation $conversation ): void {
+				unset( $outcome );
+
+				if ( null === $conversation->leadId ) {
+					return;
+				}
+
+				$this->enrolment()->exitOnEngagement( $conversation->leadId );
+			},
+			10,
+			2
 		);
 
 		add_action(

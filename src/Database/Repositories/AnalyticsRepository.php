@@ -76,6 +76,7 @@ final class AnalyticsRepository extends AbstractRepository implements AnalyticsR
 			'tokens_in'        => $metrics->tokensIn,
 			'tokens_out'       => $metrics->tokensOut,
 			'cost'             => $metrics->cost,
+			'unpriced'         => $metrics->unpriced,
 			'avg_latency_ms'   => $metrics->avgLatencyMs,
 		);
 
@@ -223,7 +224,8 @@ final class AnalyticsRepository extends AbstractRepository implements AnalyticsR
 			(int) $row['tokens_in'],
 			(int) $row['tokens_out'],
 			(float) $row['cost'],
-			null === $row['avg_latency_ms'] ? null : (int) $row['avg_latency_ms']
+			null === $row['avg_latency_ms'] ? null : (int) $row['avg_latency_ms'],
+			(int) ( $row['unpriced'] ?? 0 )
 		);
 	}
 }

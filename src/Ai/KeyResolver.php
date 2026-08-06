@@ -19,11 +19,20 @@ use SensitiveParameter;
  * Three rules hold this together, and each exists because the alternative
  * has a failure mode worth avoiding:
  *
- * 1. **Nothing decrypts on a read path.** The mask is computed once at
- *    write time and stored alongside the ciphertext, so rendering the
- *    settings screen never puts a plaintext key in memory. A screen that
- *    is viewed a hundred times a day should not decrypt a secret a
- *    hundred times a day.
+ * 1. **No read path returns a decrypted key, and only one probes.** The
+ *    mask is computed once at write time and stored alongside the
+ *    ciphertext, so rendering the settings screen never puts a plaintext
+ *    key in a response. `describe()` is the single exception and it
+ *    decrypts only to throw the result away: without that, a stored key
+ *    that this install can no longer read is indistinguishable from a
+ *    working one. `decrypt()` returns null for tampering, for a salt
+ *    rotation and for a database restored without its salt option, and
+ *    every caller reads null as "not configured" — so an operator whose
+ *    salts moved sees a configured key, a plausible mask, and provider
+ *    errors that point at the provider. The probe is what makes that
+ *    state say so. It costs one AES-GCM open of a short string on an
+ *    admin screen, and it never reaches a client as anything but a
+ *    boolean.
  * 2. **Constants win over the database.** A site defining
  *    HIVECLERK_ANTHROPIC_KEY in wp-config.php keeps its key out of the
  *    database entirely, which is what an agency managing forty sites
@@ -111,6 +120,10 @@ final class KeyResolver {
 		return array(
 			'provider'    => $provider,
 			'is_set'      => $this->isConfigured( $provider ),
+			// False only in the state that is genuinely broken: ciphertext
+			// is stored and this install cannot open it. A site with no key
+			// is not unreadable, it is unset, and `is_set` already says so.
+			'is_readable' => $this->isReadable( $record, $constant ),
 			// A key held in wp-config has no stored mask, and deriving one
 			// would mean reading the constant into a response. Saying where
 			// it comes from is more useful than showing four characters of
@@ -246,12 +259,39 @@ final class KeyResolver {
 	}
 
 	/**
+	 * Whether a stored key can still be opened on this install.
+	 *
+	 * Answers true when there is nothing stored, because "unreadable" is a
+	 * claim about a secret that exists. The failure this reports is a
+	 * one-way one — a rotated salt cannot be un-rotated and the plaintext
+	 * is gone — so the only thing an operator can do about it is paste the
+	 * key again, and the only thing the product can do is say so instead
+	 * of showing a mask that implies otherwise.
+	 *
+	 * @param array<string, mixed> $record   Stored record.
+	 * @param string|null          $constant Key from wp-config, if any.
+	 * @return bool
+	 */
+	private function isReadable( array $record, ?string $constant ): bool {
+		if ( null !== $constant ) {
+			return true;
+		}
+
+		if ( '' === self::string( $record, 'key' ) ) {
+			return true;
+		}
+
+		return null !== $this->decrypt( $record );
+	}
+
+	/**
 	 * Decrypt a stored key.
 	 *
 	 * A null here means the ciphertext is unreadable — most often because
 	 * the site's salts were rotated. Treating that as "not configured"
 	 * prompts for a new key, which is the only thing that can actually
-	 * fix it.
+	 * fix it; `isReadable()` exists so the screen can say which of the two
+	 * it is looking at.
 	 *
 	 * @param array<string, mixed> $record Stored record.
 	 * @return string|null

@@ -62,6 +62,22 @@ final class LicenceService {
 	public const REFRESH_AFTER = 43200;
 
 	/**
+	 * How long entitlements survive without a confirmed answer.
+	 *
+	 * Thirty days, and the number is a judgement rather than a
+	 * measurement. It has to be long enough that no ordinary outage
+	 * reaches it — our own downtime, a customer's firewall change, a
+	 * certificate expiry, a host blocking outbound HTTPS over a holiday —
+	 * and short enough that it is not a permanent bypass. At twelve-hourly
+	 * checks it is sixty consecutive failures.
+	 *
+	 * The failure mode of making it too short is a paying customer losing
+	 * features they paid for, which is worse than the failure mode of
+	 * making it too long. It is set accordingly.
+	 */
+	public const GRACE_PERIOD = 2592000;
+
+	/**
 	 * Resolved licence for this request.
 	 *
 	 * @var Licence|null
@@ -113,10 +129,11 @@ final class LicenceService {
 			is_numeric( $stored['sites'] ?? null ) ? (int) $stored['sites'] : 1,
 			LicenceClient::date( $stored['expires_at'] ?? null ),
 			LicenceClient::date( $stored['checked_at'] ?? null ),
-			is_string( $stored['customer'] ?? null ) ? $stored['customer'] : null
+			is_string( $stored['customer'] ?? null ) ? $stored['customer'] : null,
+			LicenceClient::date( $stored['confirmed_at'] ?? null )
 		);
 
-		$this->cache = $this->expireIfLapsed( $licence );
+		$this->cache = $this->degradeIfUnconfirmed( $this->expireIfLapsed( $licence ) );
 
 		return $this->cache;
 	}
@@ -152,7 +169,8 @@ final class LicenceService {
 			max( 1, $response->sites ),
 			$response->expiresAt,
 			$this->now(),
-			$response->customer
+			$response->customer,
+			$this->now()
 		);
 
 		$stored = $this->store( $licence, $response->isActivation() ? $key : null );
@@ -213,6 +231,12 @@ final class LicenceService {
 			// The tier is kept. Entitlements survive an outage, and the
 			// screen shows "could not be checked" so the operator knows
 			// what they are looking at.
+			//
+			// `confirmedAt` is carried forward untouched, not stamped with
+			// now(). It records the last answer we could believe, and a
+			// failed check is not one — stamping it here would reset the
+			// grace period on every failure and the ceiling would never be
+			// reached, which is the bug this field exists to prevent.
 			return $this->store(
 				new Licence(
 					$current->tier,
@@ -221,7 +245,8 @@ final class LicenceService {
 					$current->sites,
 					$current->expiresAt,
 					$this->now(),
-					$current->customer
+					$current->customer,
+					$current->confirmedAt
 				),
 				$key
 			);
@@ -235,7 +260,8 @@ final class LicenceService {
 				max( 1, $response->sites ),
 				$response->expiresAt,
 				$this->now(),
-				$response->customer
+				$response->customer,
+				$this->now()
 			),
 			$response->isActivation() ? $key : null
 		);
@@ -292,13 +318,14 @@ final class LicenceService {
 		update_option(
 			self::STATE_OPTION,
 			array(
-				'tier'       => $licence->tier->value,
-				'status'     => $licence->status->value,
-				'masked'     => $licence->masked,
-				'sites'      => $licence->sites,
-				'expires_at' => $licence->expiresAt?->format( 'c' ),
-				'checked_at' => $licence->checkedAt?->format( 'c' ),
-				'customer'   => $licence->customer,
+				'tier'         => $licence->tier->value,
+				'status'       => $licence->status->value,
+				'masked'       => $licence->masked,
+				'sites'        => $licence->sites,
+				'expires_at'   => $licence->expiresAt?->format( 'c' ),
+				'checked_at'   => $licence->checkedAt?->format( 'c' ),
+				'customer'     => $licence->customer,
+				'confirmed_at' => $licence->confirmedAt?->format( 'c' ),
 			),
 			false
 		);
@@ -344,7 +371,51 @@ final class LicenceService {
 			$licence->sites,
 			$licence->expiresAt,
 			$licence->checkedAt,
-			$licence->customer
+			$licence->customer,
+			$licence->confirmedAt
+		);
+	}
+
+	/**
+	 * Stop entitlements resting on an answer we have not had for a month.
+	 *
+	 * Applied on read rather than on write, like {@see self::expireIfLapsed()}
+	 * and for the same reason: the boundary is a moment in time, not an
+	 * event, so nothing fires when it is crossed. A site that stops being
+	 * able to reach the server never runs any code at the instant its
+	 * grace runs out.
+	 *
+	 * A licence with no confirmation on record is left alone. That is the
+	 * state every install upgrading into this version is in — the
+	 * timestamp did not exist before it — and degrading them all on the
+	 * strength of a field that has never been written would take paid
+	 * features away from every customer at once, which is precisely the
+	 * accident this whole mechanism exists to make impossible. The anchor
+	 * is set by the next successful check, within twelve hours.
+	 *
+	 * @param Licence $licence Stored licence.
+	 * @return Licence
+	 */
+	private function degradeIfUnconfirmed( Licence $licence ): Licence {
+		if ( LicenceStatus::Unreachable !== $licence->status ) {
+			return $licence;
+		}
+
+		$elapsed = $licence->secondsSinceConfirmed( $this->now() );
+
+		if ( null === $elapsed || $elapsed <= self::GRACE_PERIOD ) {
+			return $licence;
+		}
+
+		return new Licence(
+			$licence->tier,
+			LicenceStatus::Unverified,
+			$licence->masked,
+			$licence->sites,
+			$licence->expiresAt,
+			$licence->checkedAt,
+			$licence->customer,
+			$licence->confirmedAt
 		);
 	}
 

@@ -244,9 +244,11 @@ final class UnsubscribeController extends AbstractController {
 			? sanitize_text_field( wp_unslash( (string) $_SERVER['REMOTE_ADDR'] ) )
 			: 'unknown';
 
-		$salt = defined( 'AUTH_SALT' ) ? (string) AUTH_SALT : '';
-
-		return substr( hash_hmac( 'sha256', $ip, $salt ), 0, 32 );
+		// wp_salt() rather than the AUTH_SALT constant. hash_hmac() with an
+		// empty key is still a deterministic digest of the address, and the
+		// IPv4 space is small enough to enumerate — the unsalted case this
+		// method's own docblock warns about. Core guarantees a value.
+		return substr( hash_hmac( 'sha256', $ip, wp_salt( 'auth' ) ), 0, 32 );
 	}
 
 	/**

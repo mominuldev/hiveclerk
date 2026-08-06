@@ -122,6 +122,19 @@ final class MysqlBlobVectorStore implements VectorStoreInterface {
 
 		$matrix = $this->matrix( $sourceIds, $query, $diagnostics );
 
+		if ( null === $matrix ) {
+			// Another request is rebuilding this matrix. Answering from the
+			// keyword arm alone is worse than answering from both; running
+			// a second full scan alongside the first is worse than either,
+			// and is how a re-index on a busy site takes the site with it.
+			$diagnostics->note(
+				'The vector index is being rebuilt by another request, so this answer '
+				. 'used keyword search only. It returns to normal within seconds.'
+			);
+
+			return array();
+		}
+
 		if ( $matrix->isEmpty() ) {
 			$diagnostics->note( 'No vectors are stored for these sources yet.' );
 
@@ -147,6 +160,16 @@ final class MysqlBlobVectorStore implements VectorStoreInterface {
 	 */
 	public function invalidate( array $sourceIds = array() ): void {
 		$this->cache->forget( $sourceIds );
+	}
+
+	/**
+	 * Drop everything cached for a source that has been deleted.
+	 *
+	 * @param int $sourceId Source.
+	 * @return void
+	 */
+	public function forgetSource( int $sourceId ): void {
+		$this->cache->forgetSource( $sourceId );
 	}
 
 	/**
@@ -177,33 +200,78 @@ final class MysqlBlobVectorStore implements VectorStoreInterface {
 	/**
 	 * Load the quantised matrix, from cache when possible.
 	 *
+	 * Only one request rebuilds at a time. The rest are told to go without
+	 * rather than made to wait: holding a PHP worker on a lock is the same
+	 * resource exhaustion as running the scan, on hosting where the worker
+	 * count is measured in single digits.
+	 *
 	 * @param array<int, int>      $sourceIds   Sources.
 	 * @param Embedding            $query       Query, for its model pin.
 	 * @param RetrievalDiagnostics $diagnostics Diagnostics.
-	 * @return EmbeddingMatrix
+	 * @return EmbeddingMatrix|null Null when another request holds the rebuild.
 	 */
 	private function matrix(
 		array $sourceIds,
 		Embedding $query,
 		RetrievalDiagnostics $diagnostics
-	): EmbeddingMatrix {
-		$cached = $this->cache->get( $sourceIds, $query->provider, $query->model );
+	): ?EmbeddingMatrix {
+		$shards    = array();
+		$rebuilt   = false;
+		$fromCache = null;
 
-		if ( null !== $cached ) {
-			$diagnostics->matrixSource = $this->cache->lastSource();
+		foreach ( $sourceIds as $sourceId ) {
+			$cached = $this->cache->get( $sourceId, $query->provider, $query->model );
 
-			return $cached;
+			if ( null !== $cached ) {
+				$shards[]  = $cached;
+				$fromCache = $fromCache ?? $this->cache->lastSource();
+
+				continue;
+			}
+
+			$shard = $this->rebuildShard( $sourceId, $query );
+
+			if ( null === $shard ) {
+				$diagnostics->matrixSource = 'rebuilding';
+
+				return null;
+			}
+
+			$shards[] = $shard;
+			$rebuilt  = true;
 		}
 
-		$matrix = $this->embeddings->matrix( $sourceIds, $query->provider, $query->model );
+		$diagnostics->matrixSource = $rebuilt ? 'database' : ( $fromCache ?? 'database' );
 
-		$diagnostics->matrixSource = 'database';
+		return EmbeddingMatrix::concat( $shards );
+	}
 
-		if ( ! $matrix->isEmpty() ) {
-			$this->cache->put( $sourceIds, $query->provider, $query->model, $matrix );
+	/**
+	 * Rebuild one source's shard, if nobody else already is.
+	 *
+	 * @param int       $sourceId Source.
+	 * @param Embedding $query    Query, for its model pin.
+	 * @return EmbeddingMatrix|null Null when another request holds the rebuild.
+	 */
+	private function rebuildShard( int $sourceId, Embedding $query ): ?EmbeddingMatrix {
+		if ( ! $this->cache->claimRebuild( $sourceId, $query->provider, $query->model ) ) {
+			return null;
 		}
 
-		return $matrix;
+		try {
+			$shard = $this->embeddings->matrix( array( $sourceId ), $query->provider, $query->model );
+
+			if ( ! $shard->isEmpty() ) {
+				$this->cache->put( $sourceId, $query->provider, $query->model, $shard );
+			}
+
+			return $shard;
+		} finally {
+			// In a finally, so a scan that runs out of memory does not leave
+			// the lock behind it. The staleness timeout is the backstop for
+			// a process that dies without unwinding at all.
+			$this->cache->releaseRebuild( $sourceId, $query->provider, $query->model );
+		}
 	}
 
 	/**
@@ -226,19 +294,34 @@ final class MysqlBlobVectorStore implements VectorStoreInterface {
 		$queryBits = BinaryQuantiser::quantise( $query->vector );
 
 		if ( strlen( $queryBits ) !== $matrix->width ) {
-			// The query was produced by a model of a different width to the
-			// stored vectors, which means the source was indexed with one
-			// model and is being searched with another. Falling back to the
-			// exact pass over everything is slow but correct; ranking on
-			// mismatched widths would be fast and wrong.
+			/*
+			 * The query was produced by a model of a different width to the
+			 * stored vectors: the source was indexed with one model and is
+			 * being searched with another.
+			 *
+			 * This used to fall through to the exact pass over every id in
+			 * the matrix, described as slow but correct. It was slow and it
+			 * was not correct. A quantised width is a function of the
+			 * dimension count, so widths that disagree mean dimensions that
+			 * disagree, and `CosineCalculator::score()` returns 0.0 for
+			 * every pair it cannot compare. The fallback therefore loaded
+			 * every candidate's float32 blob — about 60 MB at ten thousand
+			 * chunks, on a single visitor message, against a 96 MB budget —
+			 * to score all of them zero and rank none of them.
+			 *
+			 * So it does nothing instead, and says so. The keyword arm
+			 * still answers, which is a real answer rather than an
+			 * expensive way of producing none.
+			 */
 			$diagnostics->note(
-				'The query vector and the stored vectors have different widths. '
-				. 'These sources need re-indexing with the current embedding model.'
+				'These sources were indexed with a different embedding model to the one '
+				. 'searching them, so vector search cannot compare them and this answer '
+				. 'used keyword search only. Re-indexing them with the current model fixes it.'
 			);
-			$diagnostics->strategy = 'exact_fallback';
+			$diagnostics->strategy = 'width_mismatch';
 			$diagnostics->stage1Ms = ( microtime( true ) - $started ) * 1000;
 
-			return $matrix->ids;
+			return array();
 		}
 
 		$diagnostics->strategy = 'two_stage';

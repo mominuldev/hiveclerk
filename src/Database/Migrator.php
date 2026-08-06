@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Database;
 
+use Hiveclerk\Core\Support\LockInterface;
 use Throwable;
 
 /**
@@ -17,7 +18,15 @@ use Throwable;
 final class Migrator {
 
 	private const VERSION_OPTION = 'hiveclerk_db_version';
-	private const LOCK_TRANSIENT = 'hiveclerk_migration_lock';
+	private const LOCK_NAME      = 'migrate';
+
+	/**
+	 * Construct.
+	 *
+	 * @param LockInterface $locks Mutual exclusion for a run.
+	 */
+	public function __construct( private readonly LockInterface $locks = new NamedLock() ) {
+	}
 
 	/**
 	 * Registered migrations, unsorted.
@@ -93,9 +102,23 @@ final class Migrator {
 	 * Apply every pending migration.
 	 *
 	 * A concurrent request must not run the same migration twice, so the run
-	 * is guarded by a short-lived lock. If a migration throws, the version is
-	 * left at the last one that succeeded: the next request retries from
-	 * there rather than skipping the broken step.
+	 * is guarded by a lock. If a migration throws, the version is left at the
+	 * last one that succeeded: the next request retries from there rather
+	 * than skipping the broken step.
+	 *
+	 * ## The lock has to be one
+	 *
+	 * This read a transient and then wrote one, which is not a lock: two
+	 * requests arriving together both read nothing and both proceed. It was
+	 * mostly survivable because the DDL is written to be re-runnable —
+	 * `CREATE TABLE IF NOT EXISTS`, guarded `ADD INDEX` — but "mostly" is
+	 * doing a lot of work in that sentence, and the guarantee only held for
+	 * as long as every future migration remembered to be idempotent.
+	 *
+	 * {@see NamedLock} is a MySQL advisory lock: exclusion is decided by the
+	 * server, and it is scoped to the connection, so a process killed
+	 * mid-migration releases it by disconnecting rather than blocking the
+	 * schema until some expiry guesses that it died.
 	 *
 	 * @return bool True when the database is now at the latest version.
 	 */
@@ -104,11 +127,9 @@ final class Migrator {
 			return true;
 		}
 
-		if ( false !== get_transient( self::LOCK_TRANSIENT ) ) {
+		if ( ! $this->claimLock() ) {
 			return false;
 		}
-
-		set_transient( self::LOCK_TRANSIENT, 1, 5 * MINUTE_IN_SECONDS );
 
 		$pending = $this->pending();
 		$applied = $this->currentVersion();
@@ -124,14 +145,14 @@ final class Migrator {
 			}
 		} catch ( Throwable $e ) {
 			$this->log[] = sprintf( 'Failed after #%d: %s', $applied, $e->getMessage() );
-			delete_transient( self::LOCK_TRANSIENT );
+			$this->releaseLock();
 
 			do_action( 'hiveclerk/migration/failed', $applied, $e );
 
 			return false;
 		}
 
-		delete_transient( self::LOCK_TRANSIENT );
+		$this->releaseLock();
 		delete_option( 'hiveclerk_needs_migration' );
 
 		do_action( 'hiveclerk/migration/completed', $applied );
@@ -176,6 +197,24 @@ final class Migrator {
 		update_option( self::VERSION_OPTION, $target, false );
 
 		return true;
+	}
+
+	/**
+	 * Take the migration lock, or report that somebody else holds it.
+	 *
+	 * @return bool
+	 */
+	private function claimLock(): bool {
+		return $this->locks->acquire( self::LOCK_NAME );
+	}
+
+	/**
+	 * Release the migration lock.
+	 *
+	 * @return void
+	 */
+	private function releaseLock(): void {
+		$this->locks->release( self::LOCK_NAME );
 	}
 
 	/**

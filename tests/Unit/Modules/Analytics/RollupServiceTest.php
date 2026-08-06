@@ -39,6 +39,13 @@ final class RollupServiceTest extends TestCase {
 
 	private FrozenClock $clock;
 
+	/**
+	 * Stand-in for the transient store.
+	 *
+	 * @var array<string, mixed>
+	 */
+	private array $transients = array();
+
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
@@ -50,6 +57,22 @@ final class RollupServiceTest extends TestCase {
 				'do_action'     => null,
 				'apply_filters' => static fn ( string $hook, $value ) => $value,
 			)
+		);
+
+		// Today's live figures are cached for a minute. Backed by a real
+		// store here rather than a null stub, so a test asserting how many
+		// times the source was counted sees the caching that ships.
+		$this->transients = array();
+
+		Functions\when( 'get_transient' )->alias(
+			fn( string $name ) => $this->transients[ $name ] ?? false
+		);
+		Functions\when( 'set_transient' )->alias(
+			function ( string $name, $value ) {
+				$this->transients[ $name ] = $value;
+
+				return true;
+			}
 		);
 
 		$this->rollups = new InMemoryRollups();
@@ -155,6 +178,55 @@ final class RollupServiceTest extends TestCase {
 		$this->service( $source )->run();
 
 		self::assertSame( 75, $source->qualifiedScore );
+	}
+
+	/**
+	 * One dashboard load must not count today twice.
+	 *
+	 * The site-wide series and the per-clerk roster both need today, and
+	 * counting it is not cheap: the qualified-lead figure groups the whole
+	 * of `hvc_lead_scores` before the day is filtered, so its cost grows
+	 * with all history rather than with today.
+	 */
+	public function testTodayIsCountedOncePerRequestNotPerPanel(): void {
+		$source  = new RecordingRollupSource( '2026-08-04', array( 7, 9 ) );
+		$service = $this->service( $source );
+
+		$service->today();
+		$service->todayByAgent();
+		$service->today( 7 );
+
+		self::assertSame( array( '2026-08-05' ), $source->asked );
+	}
+
+	/**
+	 * And a refresh a second later must not count it again either.
+	 */
+	public function testASecondRequestReadsTodayFromTheCache(): void {
+		$first = new RecordingRollupSource( '2026-08-04', array( 7 ) );
+		$this->service( $first )->today();
+
+		// A new service is a new request: the per-request memo is gone and
+		// only the cache can stop the count happening again.
+		$second = new RecordingRollupSource( '2026-08-04', array( 7 ) );
+		$this->service( $second )->today();
+
+		self::assertSame( array( '2026-08-05' ), $first->asked );
+		self::assertSame( array(), $second->asked );
+	}
+
+	/**
+	 * The cached figures still have to be the right ones.
+	 */
+	public function testCachedFiguresAreReturnedIntactPerClerk(): void {
+		$source  = new RecordingRollupSource( '2026-08-04', array( 7, 9 ) );
+		$service = $this->service( $source );
+
+		$service->today();
+		$byAgent = $service->todayByAgent();
+
+		self::assertSame( array( 7, 9 ), array_keys( $byAgent ) );
+		self::assertSame( '2026-08-05', $byAgent[7]->date );
 	}
 
 	/**

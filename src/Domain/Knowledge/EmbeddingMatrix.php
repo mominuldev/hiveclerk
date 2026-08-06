@@ -47,6 +47,57 @@ final class EmbeddingMatrix {
 	}
 
 	/**
+	 * Join per-source matrices into the one stage 1 scans.
+	 *
+	 * The matrix is cached a source at a time and assembled here, rather
+	 * than cached whole. Whole, its size was the size of everything a
+	 * clerk is pointed at, which is what put it over Memcached's
+	 * one-megabyte item limit at about five thousand chunks and over the
+	 * transient ceiling at sixteen thousand — and past either of those a
+	 * failed write is indistinguishable from a cache miss, so every
+	 * visitor message rebuilt it from a full table scan. Per source, the
+	 * unit is bounded by one source, and re-indexing one of forty stops
+	 * invalidating the other thirty-nine.
+	 *
+	 * Rows are fixed-width, so joining is concatenation and the ids follow
+	 * in the same order. A shard whose width disagrees with the others is
+	 * left out rather than appended: its rows would land at the wrong
+	 * offsets and silently corrupt every comparison after them, where
+	 * dropping it costs only the vectors in that one source, which the
+	 * width check in the coarse pass is already there to explain.
+	 *
+	 * @param array<int, self> $matrices Shards, in the order to scan them.
+	 * @return self
+	 */
+	public static function concat( array $matrices ): self {
+		$ids   = array();
+		$bits  = '';
+		$width = 0;
+
+		foreach ( $matrices as $matrix ) {
+			if ( $matrix->isEmpty() ) {
+				continue;
+			}
+
+			if ( 0 === $width ) {
+				$width = $matrix->width;
+			}
+
+			if ( $matrix->width !== $width ) {
+				continue;
+			}
+
+			foreach ( $matrix->ids as $id ) {
+				$ids[] = $id;
+			}
+
+			$bits .= $matrix->bits;
+		}
+
+		return new self( $ids, $bits, $width );
+	}
+
+	/**
 	 * How many vectors it holds.
 	 *
 	 * @return int

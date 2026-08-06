@@ -41,8 +41,30 @@ use Hiveclerk\Domain\Lead\Lead;
  * zero. A lead captured mid-conversation would otherwise receive a
  * follow-up email while they are still typing, which reads as
  * surveillance rather than service.
+ *
+ * ## Coming back to the clerk stops the follow-up
+ *
+ * A sequence that keeps sending after the person answered is the most
+ * damaging thing an email feature can do: it is visible to the recipient,
+ * obviously automated, and it undoes the conversation that just started.
+ * `exitOnEngagement()` closes any enrolment that has already emailed a
+ * lead when that lead talks to a clerk again.
+ *
+ * It is deliberately *not* every enrolment. A lead is usually captured in
+ * the middle of a conversation, so the visitor's next message arrives
+ * seconds after enrolment — cancelling there would close a sequence that
+ * has sent nothing, before it had any chance to. An enrolment still on
+ * step zero has nothing to stop, so it is left alone.
  */
 final class EnrolmentService {
+
+	/**
+	 * Exit reason recorded when a lead comes back and talks to a clerk.
+	 *
+	 * Not an `ExitCondition` case: that enum is the set of conditions a
+	 * customer switches on per sequence, and this one is unconditional.
+	 */
+	public const REASON_ENGAGED = 'engaged';
 
 	/**
 	 * Construct.
@@ -160,6 +182,44 @@ final class EnrolmentService {
 
 		foreach ( $this->enrollments->openForLead( $lead->id ) as $enrollment ) {
 			$enrollment->exit( $reason, $this->clock->now() );
+
+			$this->enrollments->save( $enrollment );
+
+			++$closed;
+		}
+
+		return $closed;
+	}
+
+	/**
+	 * Stop sequences that have already emailed a lead who has come back.
+	 *
+	 * Takes an id rather than a `Lead` because this runs on the chat reply
+	 * path, once per visitor message on a conversation that has a lead
+	 * attached. `openForLead()` is an indexed lookup returning the handful
+	 * of sequences one person can be in; loading the lead as well would
+	 * add a second query to that path for nothing, since no field on it is
+	 * read here.
+	 *
+	 * @param int $leadId Lead storage id.
+	 * @return int How many enrolments were closed.
+	 */
+	public function exitOnEngagement( int $leadId ): int {
+		$closed = 0;
+
+		foreach ( $this->enrollments->openForLead( $leadId ) as $enrollment ) {
+			/*
+			 * `currentStep` is the position of the *next* step to send, so
+			 * zero means nothing has gone out yet. Those are the enrolments
+			 * created moments ago by the capture that this same
+			 * conversation produced, and closing them would mean no lead
+			 * captured in a conversation ever receives a follow-up.
+			 */
+			if ( $enrollment->currentStep < 1 ) {
+				continue;
+			}
+
+			$enrollment->exit( self::REASON_ENGAGED, $this->clock->now() );
 
 			$this->enrollments->save( $enrollment );
 

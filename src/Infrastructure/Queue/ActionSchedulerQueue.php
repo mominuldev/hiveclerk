@@ -36,7 +36,14 @@ final class ActionSchedulerQueue implements QueueInterface {
 		return function_exists( 'as_enqueue_async_action' )
 			&& function_exists( 'as_schedule_single_action' )
 			&& function_exists( 'as_unschedule_all_actions' )
-			&& function_exists( 'as_has_scheduled_action' );
+			&& function_exists( 'as_has_scheduled_action' )
+			// Checked with the rest rather than assumed to come along with
+			// them. Every Action Scheduler build that ships the four above
+			// also ships this one, so its absence was latent rather than
+			// live — but this list is what decides whether the driver is
+			// selected at all, and a function it calls and does not name
+			// here is a fatal waiting for a build that disagrees.
+			&& function_exists( 'as_schedule_recurring_action' );
 	}
 
 	/**

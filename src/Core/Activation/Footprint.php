@@ -116,6 +116,7 @@ final class Footprint {
 		);
 	}
 
+
 	/**
 	 * Object cache groups this plugin writes into.
 	 *

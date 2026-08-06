@@ -61,6 +61,25 @@ final class ChunkOptions {
 	public const ABSOLUTE_MAX_TOKENS = 4000;
 
 	/**
+	 * Smallest target a stored configuration may ask for.
+	 *
+	 * A target is a divisor on a page: halve it and you roughly double the
+	 * chunk count, and every chunk is an embedding call the customer pays
+	 * for. Left unbounded, `chunk_target: 1` turns one page into a chunk
+	 * per sentence and one re-index into a bill — reachable by anyone who
+	 * can write a source, which includes roles deliberately not trusted
+	 * with the API key itself. Cost exhaustion is cheaper to execute than
+	 * a denial of service and harder to notice.
+	 *
+	 * 64 matches the floor already applied to the ceiling, below which the
+	 * two bounds would cross. It is also below anything measured as
+	 * useful: 128 scored recall@5 0.741 against 0.926 at the 200 default,
+	 * so this floor is well past the point of being a bad idea and exists
+	 * only to stop the pathological case.
+	 */
+	public const MIN_TARGET_TOKENS = 64;
+
+	/**
 	 * Size to aim for when packing units into a chunk.
 	 *
 	 * Not promoted, because it is clamped against `$maxTokens` and a
@@ -122,8 +141,14 @@ final class ChunkOptions {
 		// the embedding bill and the storage for no measured gain.
 		$overlap = max( 0.0, min( 0.5, $overlap ) );
 
+		/*
+		 * Floored as well as capped. The constructor's own floor is 1,
+		 * which is right for code that builds these directly — the packing
+		 * tests need small targets — and wrong for a value that arrived
+		 * from a request body or from JSON an older version wrote.
+		 */
 		$target = isset( $config['chunk_target'] ) && is_numeric( $config['chunk_target'] )
-			? (int) $config['chunk_target']
+			? max( self::MIN_TARGET_TOKENS, min( $max, (int) $config['chunk_target'] ) )
 			: null;
 
 		return new self(

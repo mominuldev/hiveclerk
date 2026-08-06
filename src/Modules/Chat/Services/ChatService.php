@@ -370,7 +370,16 @@ final class ChatService {
 		$citations = $blocked ? array() : $this->citationsFor( $agent, $prompt );
 		$tokensIn  = null !== $finished ? $finished->tokensIn : 0;
 		$tokensOut = null !== $finished ? $finished->tokensOut : 0;
-		$cost      = null !== $finished ? (float) ( $finished->reportedCost ?? 0.0 ) : 0.0;
+		/*
+		 * Null, not zero, when the model has no published price.
+		 *
+		 * `Completion::$reportedCost` is already nullable and `PricingTable`
+		 * already answers null for an unpriced model — the product knew the
+		 * cost was unknown and this line was where it stopped knowing. A
+		 * zero here is a claim that the call was free, and it summed into a
+		 * spend figure that understated in the direction nobody audits.
+		 */
+		$cost = $finished?->reportedCost;
 
 		$stored = $this->store(
 			$conversation,
@@ -533,7 +542,7 @@ final class ChatService {
 			model: isset( $extra['model'] ) && is_string( $extra['model'] ) ? $extra['model'] : null,
 			tokensIn: (int) ( $extra['tokens_in'] ?? 0 ),
 			tokensOut: (int) ( $extra['tokens_out'] ?? 0 ),
-			cost: (float) ( $extra['cost'] ?? 0.0 ),
+			cost: isset( $extra['cost'] ) && is_numeric( $extra['cost'] ) ? (float) $extra['cost'] : null,
 			latencyMs: isset( $extra['latency_ms'] ) ? (int) $extra['latency_ms'] : null,
 			retrievalScore: isset( $extra['retrieval_score'] ) ? (float) $extra['retrieval_score'] : null,
 			isGrounded: (bool) ( $extra['is_grounded'] ?? false ),
@@ -551,16 +560,28 @@ final class ChatService {
 	/**
 	 * Add one exchange's usage to the conversation's running totals.
 	 *
+	 * A call with no known price adds nothing to the total and one to the
+	 * count of calls that could not be priced. Nulling the total instead
+	 * would throw away everything that *is* known about the conversation's
+	 * spend; adding a zero would claim the call was free. "At least this
+	 * much, across this many priced calls, with this many unpriced" is the
+	 * only honest reading, and it takes both numbers to say it.
+	 *
 	 * @param Conversation $conversation The conversation.
 	 * @param int          $tokensIn     Prompt tokens.
 	 * @param int          $tokensOut    Completion tokens.
-	 * @param float        $cost         Spend in USD.
+	 * @param float|null   $cost         Spend in USD, null when unpriced.
 	 * @return void
 	 */
-	private function tally( Conversation $conversation, int $tokensIn, int $tokensOut, float $cost ): void {
+	private function tally( Conversation $conversation, int $tokensIn, int $tokensOut, ?float $cost ): void {
 		$conversation->totalTokensIn  += $tokensIn;
 		$conversation->totalTokensOut += $tokensOut;
-		$conversation->totalCost      += $cost;
+
+		if ( null === $cost ) {
+			++$conversation->unpricedCalls;
+		} else {
+			$conversation->totalCost += $cost;
+		}
 
 		$this->conversations->save( $conversation );
 	}

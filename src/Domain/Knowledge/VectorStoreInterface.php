@@ -68,6 +68,19 @@ interface VectorStoreInterface {
 	public function invalidate( array $sourceIds = array() ): void;
 
 	/**
+	 * Forget a source that has been deleted.
+	 *
+	 * Separate from invalidation, which assumes the source will be rebuilt
+	 * and so leaves its bookkeeping in place. A deleted source never will
+	 * be, and its counter would otherwise outlive it for the life of the
+	 * install.
+	 *
+	 * @param int $sourceId Source.
+	 * @return void
+	 */
+	public function forgetSource( int $sourceId ): void;
+
+	/**
 	 * How many vectors a source holds.
 	 *
 	 * @param int $sourceId Source.

@@ -104,17 +104,25 @@ final class LicenceClient {
 		$response = wp_remote_post(
 			trailingslashit( $endpoint ) . $action,
 			array(
-				'timeout'   => self::TIMEOUT,
+				'timeout'     => self::TIMEOUT,
 				// Explicit rather than relying on the default. A licence
 				// request carries a key that identifies a paying customer,
 				// and a site with a broken CA bundle should fail rather
 				// than send it over an unverified connection.
-				'sslverify' => true,
-				'headers'   => array(
+				'sslverify'   => true,
+				// The body carries the customer's licence key, and
+				// WordPress follows five redirects by default — replaying
+				// that body to each new location. The endpoint is a fixed
+				// HTTPS URL, so reaching a hostile one means the filter or
+				// the server itself is already compromised; this is the
+				// same standard every other outbound call in the codebase
+				// now holds, and there is no legitimate redirect to lose.
+				'redirection' => 0,
+				'headers'     => array(
 					'Accept'       => 'application/json',
 					'Content-Type' => 'application/json',
 				),
-				'body'      => (string) wp_json_encode(
+				'body'        => (string) wp_json_encode(
 					array(
 						'key'     => $key,
 						'site'    => $site,

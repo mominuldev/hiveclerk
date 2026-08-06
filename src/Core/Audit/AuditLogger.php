@@ -45,6 +45,22 @@ final class AuditLogger {
 	 * Matched as substrings against lower-cased keys, so `api_key`,
 	 * `refresh_token` and `client_secret` are all caught without needing
 	 * an exhaustive list of the exact names every integration will use.
+	 *
+	 * `webhook` is here because a Slack incoming-webhook URL is a bearer
+	 * credential wearing an address's clothes: anyone holding it can post
+	 * into the customer's channel, and nothing about the string looks like
+	 * a secret. It matched none of the other hints, so it landed in the
+	 * audit table in full and went out through the
+	 * `hiveclerk/audit/recorded` action, which this class's own docblock
+	 * promises is free of secrets. It covers both names this codebase uses,
+	 * `slack_webhook` and `webhook`.
+	 *
+	 * A bare `url` is deliberately *not* a hint. It would redact
+	 * `page_url`, `site_url`, `document_url` and every other address the
+	 * log keeps as context — none of which is a credential, all of which
+	 * are the detail that makes an entry worth reading. Redacting the
+	 * whole audit log to catch one field would trade a working control for
+	 * a broken one.
 	 */
 	private const SECRET_HINTS = array(
 		'key',
@@ -55,6 +71,7 @@ final class AuditLogger {
 		'credential',
 		'authorization',
 		'signature',
+		'webhook',
 	);
 
 	/**
@@ -184,9 +201,13 @@ final class AuditLogger {
 	/**
 	 * A salted hash of the request IP.
 	 *
-	 * Salted with the site's own AUTH_SALT so the hashes cannot be
-	 * reversed with a rainbow table of the four billion IPv4 addresses,
-	 * which an unsalted SHA-256 of an IP address plainly can be.
+	 * Salted with the site's own secret so the hashes cannot be reversed
+	 * with a rainbow table of the four billion IPv4 addresses, which an
+	 * unsalted SHA-256 of an IP address plainly can be. `wp_salt()` is
+	 * used rather than the AUTH_SALT constant because core falls back to a
+	 * generated per-install value, where reading the constant fell back to
+	 * an empty string and produced exactly the reversible hash this exists
+	 * to avoid.
 	 *
 	 * @return string|null
 	 */
@@ -203,9 +224,7 @@ final class AuditLogger {
 			return null;
 		}
 
-		$salt = defined( 'AUTH_SALT' ) ? (string) AUTH_SALT : '';
-
-		return hash( 'sha256', $salt . '|' . $ip );
+		return hash( 'sha256', wp_salt( 'auth' ) . '|' . $ip );
 	}
 
 	/**

@@ -38,11 +38,16 @@ interface DocumentRepositoryInterface {
 	public function findByExternalId( int $sourceId, string $externalId ): ?Document;
 
 	/**
-	 * List documents in a source.
+	 * List documents in a source, without their bodies.
+	 *
+	 * Returns summaries rather than entities because the body is a
+	 * LONGTEXT column that no list renders. See {@see DocumentSummary} for
+	 * why this is a separate type and not a `Document` with the field left
+	 * empty.
 	 *
 	 * @param int        $sourceId   Source.
 	 * @param Pagination $pagination Page request.
-	 * @return array<int, Document>
+	 * @return array<int, DocumentSummary>
 	 */
 	public function forSource( int $sourceId, Pagination $pagination ): array;
 

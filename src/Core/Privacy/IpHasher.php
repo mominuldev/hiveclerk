@@ -71,13 +71,18 @@ final class IpHasher {
 		}
 
 		/*
-		 * Salted with AUTH_SALT so the digests are not comparable against
-		 * a rainbow table of the whole IPv4 space, which is small enough
-		 * to enumerate — an unsalted SHA-256 of an IP address is a
-		 * reversible identifier wearing a hash's clothes.
+		 * Salted so the digests are not comparable against a rainbow table
+		 * of the whole IPv4 space, which is small enough to enumerate — an
+		 * unsalted SHA-256 of an IP address is a reversible identifier
+		 * wearing a hash's clothes.
+		 *
+		 * `wp_salt()` rather than the AUTH_SALT constant, which this read
+		 * directly and fell back to an empty string for. A blank salt is
+		 * exactly the reversible hash the paragraph above says must not
+		 * happen, and nothing anywhere reported being in that state. Core
+		 * generates a random per-install salt and stores it when the
+		 * constants are missing, so this cannot come back empty.
 		 */
-		$salt = defined( 'AUTH_SALT' ) ? (string) AUTH_SALT : '';
-
-		return hash( 'sha256', $salt . '|' . $ip );
+		return hash( 'sha256', wp_salt( 'auth' ) . '|' . $ip );
 	}
 }

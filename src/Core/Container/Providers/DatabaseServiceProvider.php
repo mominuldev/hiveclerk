@@ -21,6 +21,8 @@ use Hiveclerk\Database\Migrations\M0007_Platform;
 use Hiveclerk\Database\Migrations\M0008_UsageCostNullable;
 use Hiveclerk\Database\Migrations\M0009_ConversationSupervision;
 use Hiveclerk\Database\Migrations\M0010_LeadPipeline;
+use Hiveclerk\Database\Migrations\M0011_QualifiedLeadIndex;
+use Hiveclerk\Database\Migrations\M0012_UnknownCost;
 use Hiveclerk\Database\Repositories\ActivityRepository;
 use Hiveclerk\Database\Repositories\AnalyticsRepository;
 use Hiveclerk\Database\Repositories\AuditRepository;
@@ -59,7 +61,9 @@ use Hiveclerk\Domain\Lead\LeadStageRepositoryInterface;
 use Hiveclerk\Domain\Lead\ScoreEventRepositoryInterface;
 use Hiveclerk\Domain\Lead\VisitorRepositoryInterface;
 use Hiveclerk\Domain\Usage\UsageRepositoryInterface;
+use Hiveclerk\Core\Support\LockInterface;
 use Hiveclerk\Database\Migrator;
+use Hiveclerk\Database\NamedLock;
 use Hiveclerk\Database\ServerInfo;
 use Hiveclerk\Database\Repositories\AgentRepository;
 use Hiveclerk\Database\Repositories\CitationRepository;
@@ -96,6 +100,8 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		M0008_UsageCostNullable::class,
 		M0009_ConversationSupervision::class,
 		M0010_LeadPipeline::class,
+		M0011_QualifiedLeadIndex::class,
+		M0012_UnknownCost::class,
 	);
 
 	/**
@@ -111,9 +117,14 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		);
 
 		$container->singleton(
+			LockInterface::class,
+			static fn (): LockInterface => new NamedLock()
+		);
+
+		$container->singleton(
 			Migrator::class,
-			static function (): Migrator {
-				$migrator = new Migrator();
+			static function ( $c ): Migrator {
+				$migrator = new Migrator( $c->get( LockInterface::class ) );
 
 				foreach ( self::MIGRATIONS as $migration ) {
 					$migrator->add( new $migration() );

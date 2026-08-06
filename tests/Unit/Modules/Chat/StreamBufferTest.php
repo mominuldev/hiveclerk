@@ -153,6 +153,47 @@ final class StreamBufferTest extends TestCase {
 		$this->assertSame( str_repeat( 'token ', 50 ), $state['text'] );
 	}
 
+	/**
+	 * A flush costs a memory write with Redis and an option row without,
+	 * so the throttle is a function of which one is in play.
+	 *
+	 * Each flush rewrites the whole answer so far, not the new part, so a
+	 * ten-second reply at 150 ms was sixty-odd increasingly long writes
+	 * into `wp_options` for a single visitor.
+	 */
+	public function testWritesAreThrottledHarderWhenEveryFlushIsADatabaseRow(): void {
+		$writes = 0;
+
+		Functions\when( 'set_transient' )->alias(
+			function () use ( &$writes ): bool {
+				++$writes;
+
+				return true;
+			}
+		);
+		Functions\when( 'wp_using_ext_object_cache' )->justReturn( false );
+
+		$buffer = new StreamBuffer();
+		$key    = StreamBuffer::key( 'session-uuid', 'reference-uuid' );
+
+		$buffer->open( $key );
+
+		// Spread over a second of wall clock, which is what a real
+		// completion does; without sleeping, the throttle would collapse
+		// every append into one write and prove nothing.
+		for ( $i = 0; $i < 10; $i++ ) {
+			$buffer->append( $key, 'token ' );
+			usleep( 100_000 );
+		}
+
+		$buffer->complete( $key, array( 'message_id' => 'abc' ) );
+
+		// A second of appends at 450 ms is two or three flushes plus the
+		// forced one at the end; at 150 ms it would be seven or more.
+		self::assertLessThanOrEqual( 4, $writes );
+		self::assertSame( str_repeat( 'token ', 10 ), $buffer->read( $key )['text'] );
+	}
+
 	public function testTheKeyIsScopedToTheSession(): void {
 		$mine   = StreamBuffer::key( 'session-a', 'shared-reference' );
 		$theirs = StreamBuffer::key( 'session-b', 'shared-reference' );

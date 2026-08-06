@@ -33,7 +33,8 @@ final class Conversation {
 	 * @param bool                   $resolvedByAi   Closed without a human.
 	 * @param int                    $totalTokensIn  Prompt tokens.
 	 * @param int                    $totalTokensOut Completion tokens.
-	 * @param float                  $totalCost      Spend in USD.
+	 * @param float                  $totalCost      Spend in USD across the calls that had a price.
+	 * @param int                    $unpricedCalls  Calls in this conversation whose cost is not known.
 	 * @param DateTimeImmutable|null $startedAt      Start time, UTC.
 	 * @param string|null            $pageTitle      Title of the page it started on.
 	 * @param array<int, string>     $tags           Operator-applied labels.
@@ -61,6 +62,7 @@ final class Conversation {
 		public int $totalTokensIn = 0,
 		public int $totalTokensOut = 0,
 		public float $totalCost = 0.0,
+		public int $unpricedCalls = 0,
 		public ?DateTimeImmutable $startedAt = null,
 		public ?string $pageTitle = null,
 		public array $tags = array(),

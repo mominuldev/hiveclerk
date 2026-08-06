@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Modules\KnowledgeBase\Vector;
 
+use Hiveclerk\Core\Support\LockInterface;
 use Hiveclerk\Domain\Knowledge\EmbeddingMatrix;
 
 /**
@@ -72,11 +73,36 @@ final class MatrixCache {
 	private const MAX_TRANSIENT_BYTES = 4194304;
 
 	/**
+	 * Records that the last write had nowhere to go.
+	 *
+	 * A refused write and a cold cache look identical from the read side —
+	 * both are a miss — so without this the index is rebuilt on every
+	 * message and the only symptom is that the site is slow. The flag is
+	 * written only when a write actually fails and expires on its own, so
+	 * a host that gains an object cache stops reporting the problem within
+	 * a day without anything having to clear it.
+	 */
+	private const REFUSED_TRANSIENT = 'hvc_mtx_refused';
+
+	/**
+	 * Lock name prefix for a shard rebuild.
+	 */
+	private const LOCK_PREFIX = 'mtx_';
+
+	/**
 	 * Matrices already loaded this request.
 	 *
 	 * @var array<string, EmbeddingMatrix>
 	 */
 	private array $memo = array();
+
+	/**
+	 * Construct.
+	 *
+	 * @param LockInterface $locks Rebuild mutual exclusion.
+	 */
+	public function __construct( private readonly LockInterface $locks ) {
+	}
 
 	/**
 	 * Where the last read came from.
@@ -86,15 +112,15 @@ final class MatrixCache {
 	private string $lastSource = 'database';
 
 	/**
-	 * Read a cached matrix.
+	 * Read one source's cached shard.
 	 *
-	 * @param array<int, int> $sourceIds Sources.
-	 * @param string          $provider  Pinned provider.
-	 * @param string          $model     Pinned model.
+	 * @param int    $sourceId Source.
+	 * @param string $provider Pinned provider.
+	 * @param string $model    Pinned model.
 	 * @return EmbeddingMatrix|null
 	 */
-	public function get( array $sourceIds, string $provider, string $model ): ?EmbeddingMatrix {
-		$key = $this->key( $sourceIds, $provider, $model );
+	public function get( int $sourceId, string $provider, string $model ): ?EmbeddingMatrix {
+		$key = $this->key( $sourceId, $provider, $model );
 
 		if ( isset( $this->memo[ $key ] ) ) {
 			$this->lastSource = 'request';
@@ -137,21 +163,21 @@ final class MatrixCache {
 	}
 
 	/**
-	 * Store a matrix.
+	 * Store one source's shard.
 	 *
-	 * @param array<int, int> $sourceIds Sources.
-	 * @param string          $provider  Pinned provider.
-	 * @param string          $model     Pinned model.
-	 * @param EmbeddingMatrix $matrix    Matrix.
+	 * @param int             $sourceId Source.
+	 * @param string          $provider Pinned provider.
+	 * @param string          $model    Pinned model.
+	 * @param EmbeddingMatrix $matrix   Shard.
 	 * @return void
 	 */
-	public function put( array $sourceIds, string $provider, string $model, EmbeddingMatrix $matrix ): void {
-		$key = $this->key( $sourceIds, $provider, $model );
+	public function put( int $sourceId, string $provider, string $model, EmbeddingMatrix $matrix ): void {
+		$key = $this->key( $sourceId, $provider, $model );
 
 		$this->memo[ $key ] = $matrix;
 
 		if ( $this->isPersistent() ) {
-			wp_cache_set(
+			$stored = wp_cache_set(
 				$key,
 				array(
 					'ids'   => $matrix->ids,
@@ -161,6 +187,25 @@ final class MatrixCache {
 				self::GROUP,
 				self::TTL
 			);
+
+			if ( false !== $stored ) {
+				return;
+			}
+
+			/*
+			 * The backend refused the item. Memcached caps a single value
+			 * at 1 MB by default, which a matrix passes at roughly five
+			 * thousand chunks — and it reports that only in this return
+			 * value, which was previously discarded. Every message then
+			 * rebuilt the matrix from a full table scan while the status
+			 * screen reported a healthy object cache.
+			 *
+			 * There is no second attempt to make: with a persistent object
+			 * cache `set_transient()` routes to the same backend and would
+			 * be refused identically. So the failure is recorded instead,
+			 * and the operator is told what to change.
+			 */
+			$this->recordRefusal( 'object_cache', strlen( $matrix->bits ) );
 
 			return;
 		}
@@ -188,6 +233,8 @@ final class MatrixCache {
 		$encoded = base64_encode( $matrix->bits );
 
 		if ( strlen( $encoded ) > self::MAX_TRANSIENT_BYTES ) {
+			$this->recordRefusal( 'transient', strlen( $matrix->bits ) );
+
 			return;
 		}
 
@@ -201,6 +248,84 @@ final class MatrixCache {
 			),
 			self::TTL
 		);
+	}
+
+	/**
+	 * Become the one process that rebuilds this matrix.
+	 *
+	 * Invalidation is a generation bump, which orphans every key at once
+	 * and costs nothing — so the moment a source finishes re-indexing,
+	 * every visitor message in flight misses the cache together and starts
+	 * the same multi-megabyte scan. At ten thousand chunks that is 128 ms
+	 * and tens of megabytes each; at fifty thousand it is 1.1 seconds and
+	 * 113 MB each. On shared hosting with a handful of PHP workers, ten
+	 * concurrent messages during a re-index is not a slow page, it is the
+	 * site going down.
+	 *
+	 * Held per source, so re-indexing one of a clerk's forty sources
+	 * blocks a rebuild of that one and nothing else.
+	 *
+	 * See {@see \Hiveclerk\Database\NamedLock} for why this is a MySQL advisory lock and not
+	 * an option — an option is exclusive but cannot safely be taken back
+	 * from a process that died holding it, and the attempt to do that had
+	 * five of sixteen concurrent callers each believing they had won.
+	 *
+	 * @param int    $sourceId Source.
+	 * @param string $provider Pinned provider.
+	 * @param string $model    Pinned model.
+	 * @return bool False when somebody else is already rebuilding it.
+	 */
+	public function claimRebuild( int $sourceId, string $provider, string $model ): bool {
+		return $this->locks->acquire(
+			self::LOCK_PREFIX . $this->key( $sourceId, $provider, $model )
+		);
+	}
+
+	/**
+	 * Release the rebuild lock.
+	 *
+	 * @param int    $sourceId Source.
+	 * @param string $provider Pinned provider.
+	 * @param string $model    Pinned model.
+	 * @return void
+	 */
+	public function releaseRebuild( int $sourceId, string $provider, string $model ): void {
+		$this->locks->release(
+			self::LOCK_PREFIX . $this->key( $sourceId, $provider, $model )
+		);
+	}
+
+	/**
+	 * Forget a source that no longer exists.
+	 *
+	 * Different from invalidating it. Invalidation bumps the source's
+	 * generation so its shard key changes, which is right while the source
+	 * is still there and will be rebuilt. A deleted source is never
+	 * rebuilt, so its counter would sit in the option for the life of the
+	 * install — one entry per source ever created, read on every retrieval
+	 * to build a key and rewritten whole on every invalidation.
+	 *
+	 * Dropping the entry returns the source to generation zero, which is
+	 * safe because the ids are auto-increment and never reissued: no
+	 * future source can be handed the number and find a stale shard
+	 * waiting under it.
+	 *
+	 * @param int $sourceId Source that has been deleted.
+	 * @return void
+	 */
+	public function forgetSource( int $sourceId ): void {
+		$this->memo = array();
+
+		$drop = (string) $sourceId;
+		$kept = array();
+
+		foreach ( $this->generations() as $key => $value ) {
+			if ( $key !== $drop ) {
+				$kept[ $key ] = $value;
+			}
+		}
+
+		update_option( self::GENERATION_OPTION, $kept, false );
 	}
 
 	/**
@@ -257,45 +382,111 @@ final class MatrixCache {
 	 */
 	public function describe(): array {
 		$persistent = $this->isPersistent();
+		$refusal    = $this->lastRefusal();
 
 		return array(
 			'backend'       => $persistent ? 'object_cache' : 'transient',
 			'persistent'    => $persistent,
 			'ttl'           => self::TTL,
 			'max_cacheable' => $persistent ? null : self::MAX_TRANSIENT_BYTES,
-			'note'          => $persistent
-				? null
-				: 'No persistent object cache was found. The vector index falls back to a '
-					. 'database transient, which adds roughly 10–40 ms to each search and '
-					. 'stops working above about 16,000 chunks — past that the index is '
-					. 'rebuilt on every message. Installing Redis or Memcached removes both limits.',
+			'cacheable'     => null === $refusal,
+			'refused_bytes' => $refusal['bytes'] ?? null,
+			'note'          => $this->note( $persistent, $refusal ),
 		);
 	}
 
 	/**
-	 * Build a cache key.
+	 * What an operator should be told about the cache right now.
 	 *
-	 * @param array<int, int> $sourceIds Sources.
-	 * @param string          $provider  Provider.
-	 * @param string          $model     Model.
-	 * @return string
+	 * @param bool                                  $persistent Whether a persistent backend is in play.
+	 * @param array{backend: string, bytes: int}|null $refusal  The last refused write, if any.
+	 * @return string|null
 	 */
-	private function key( array $sourceIds, string $provider, string $model ): string {
-		$ids = array_values( array_unique( array_map( 'intval', $sourceIds ) ) );
-		sort( $ids );
-
-		$generations = $this->generations();
-		$stamp       = (string) ( $generations['*'] ?? 0 );
-
-		foreach ( $ids as $id ) {
-			$stamp .= '.' . ( $generations[ (string) $id ] ?? 0 );
+	private function note( bool $persistent, ?array $refusal ): ?string {
+		if ( null !== $refusal && 'object_cache' === $refusal['backend'] ) {
+			return 'The vector index is larger than this object cache will accept a single '
+				. 'value of, so it is rebuilt from the database on every message. Memcached '
+				. 'caps an item at 1 MB by default; Redis does not. Raising that limit, '
+				. 'switching to Redis, or giving a clerk fewer sources restores caching.';
 		}
 
-		// Hashed rather than concatenated: an agency site can assign forty
-		// sources to a clerk, and the object cache key length limit on
-		// Memcached is 250 bytes.
+		if ( null !== $refusal ) {
+			return 'The vector index is too large for the database transient this host falls '
+				. 'back to, so it is rebuilt on every message. Installing Redis or Memcached '
+				. 'removes the limit.';
+		}
+
+		if ( $persistent ) {
+			return null;
+		}
+
+		return 'No persistent object cache was found. The vector index falls back to a '
+			. 'database transient, which adds roughly 10–40 ms to each search and '
+			. 'stops working above about 16,000 chunks — past that the index is '
+			. 'rebuilt on every message. Installing Redis or Memcached removes both limits.';
+	}
+
+	/**
+	 * Record that a matrix had nowhere to be written.
+	 *
+	 * @param string $backend Which backend refused it.
+	 * @param int    $bytes   Size of the matrix that was refused.
+	 * @return void
+	 */
+	private function recordRefusal( string $backend, int $bytes ): void {
+		set_transient(
+			self::REFUSED_TRANSIENT,
+			array(
+				'backend' => $backend,
+				'bytes'   => $bytes,
+			),
+			self::TTL
+		);
+	}
+
+	/**
+	 * The last refused write, if one is still on record.
+	 *
+	 * @return array{backend: string, bytes: int}|null
+	 */
+	private function lastRefusal(): ?array {
+		$stored = get_transient( self::REFUSED_TRANSIENT );
+
+		if ( ! is_array( $stored ) || ! isset( $stored['backend'], $stored['bytes'] ) ) {
+			return null;
+		}
+
+		return array(
+			'backend' => (string) $stored['backend'],
+			'bytes'   => (int) $stored['bytes'],
+		);
+	}
+
+	/**
+	 * Build a shard's cache key.
+	 *
+	 * Keyed on one source rather than a set. A set-shaped key made the
+	 * number of possible entries the number of source *combinations*, so
+	 * two clerks sharing nine of ten sources cached the overlap twice, and
+	 * every combination mentioning a re-indexed source had to be orphaned
+	 * at once. Per source there is one entry per source, and re-indexing
+	 * invalidates exactly one of them.
+	 *
+	 * @param int    $sourceId Source.
+	 * @param string $provider Provider.
+	 * @param string $model    Model.
+	 * @return string
+	 */
+	private function key( int $sourceId, string $provider, string $model ): string {
+		$generations = $this->generations();
+
+		$stamp = (string) ( $generations['*'] ?? 0 )
+			. '.' . ( $generations[ (string) $sourceId ] ?? 0 );
+
+		// Hashed rather than concatenated: Memcached caps a key at 250
+		// bytes and a provider and model name are not short.
 		return substr(
-			md5( implode( ',', $ids ) . '|' . $provider . '|' . $model . '|' . $stamp ),
+			md5( $sourceId . '|' . $provider . '|' . $model . '|' . $stamp ),
 			0,
 			24
 		);

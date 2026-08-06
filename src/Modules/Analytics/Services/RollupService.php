@@ -62,6 +62,35 @@ final class RollupService {
 	public const BATCH_DAYS = 25;
 
 	/**
+	 * How long today's live figures are reused before being recounted.
+	 *
+	 * Today is counted from the live tables on every request that asks for
+	 * it, and counting it is not cheap: the qualified-lead figure groups
+	 * the whole of `hvc_lead_scores` before the day is filtered, so its
+	 * cost grows with all history rather than with today. A dashboard that
+	 * asks for the site-wide series and the per-clerk roster pays it
+	 * twice, and pays it again on every refresh — inside the 400 ms budget
+	 * an admin request is held to.
+	 *
+	 * A minute is short enough that nobody watching a live conversation
+	 * notices, and long enough that a page of panels and an operator
+	 * refreshing it cost one count rather than a dozen.
+	 */
+	private const TODAY_TTL = 60;
+
+	/**
+	 * Transient holding today's live figures.
+	 */
+	private const TODAY_TRANSIENT = 'hvc_rollup_today';
+
+	/**
+	 * Today's rows, once per request.
+	 *
+	 * @var array<string, array<int, DailyMetrics>>
+	 */
+	private array $todayMemo = array();
+
+	/**
 	 * Construct.
 	 *
 	 * @param RollupSourceInterface        $source   Counts the live tables.
@@ -141,13 +170,64 @@ final class RollupService {
 	public function today( ?int $agentId = null ): DailyMetrics {
 		$date = $this->nowUtc()->format( 'Y-m-d' );
 
-		foreach ( $this->source->metricsFor( $date, $this->qualifiedScore() ) as $metrics ) {
+		foreach ( $this->liveToday( $date ) as $metrics ) {
 			if ( $metrics->agentId === $agentId ) {
 				return $metrics;
 			}
 		}
 
 		return DailyMetrics::empty( $date, $agentId );
+	}
+
+	/**
+	 * Today's rows, counted at most once a minute.
+	 *
+	 * Memoised for the request as well as cached across requests, because
+	 * a single dashboard load asks for the site-wide figure and the
+	 * per-clerk roster separately and would otherwise count twice before
+	 * the cache had anything in it.
+	 *
+	 * Not written through {@see AnalyticsRepositoryInterface}: today is
+	 * deliberately never stored as a rollup row, and a cache entry that
+	 * expires on its own is not the same thing as a stored partial day
+	 * that would outlive the day it describes.
+	 *
+	 * @param string $date UTC day.
+	 * @return array<int, DailyMetrics>
+	 */
+	private function liveToday( string $date ): array {
+		if ( isset( $this->todayMemo[ $date ] ) ) {
+			return $this->todayMemo[ $date ];
+		}
+
+		$cached = get_transient( self::TODAY_TRANSIENT . '_' . $date );
+
+		if ( is_array( $cached ) ) {
+			$rows = array();
+
+			foreach ( $cached as $row ) {
+				if ( $row instanceof DailyMetrics ) {
+					$rows[] = $row;
+				}
+			}
+
+			// Only trusted whole. A partially decoded cache would report
+			// some clerks and silently drop others, which reads as a quiet
+			// day rather than as a broken cache.
+			if ( count( $rows ) === count( $cached ) ) {
+				$this->todayMemo[ $date ] = $rows;
+
+				return $rows;
+			}
+		}
+
+		$rows = $this->source->metricsFor( $date, $this->qualifiedScore() );
+
+		set_transient( self::TODAY_TRANSIENT . '_' . $date, $rows, self::TODAY_TTL );
+
+		$this->todayMemo[ $date ] = $rows;
+
+		return $rows;
 	}
 
 	/**
@@ -164,7 +244,7 @@ final class RollupService {
 		$date = $this->nowUtc()->format( 'Y-m-d' );
 		$rows = array();
 
-		foreach ( $this->source->metricsFor( $date, $this->qualifiedScore() ) as $metrics ) {
+		foreach ( $this->liveToday( $date ) as $metrics ) {
 			if ( null !== $metrics->agentId ) {
 				$rows[ $metrics->agentId ] = $metrics;
 			}

@@ -13,6 +13,7 @@ use Hiveclerk\Database\AbstractRepository;
 use Hiveclerk\Database\Schema;
 use Hiveclerk\Domain\Knowledge\Document;
 use Hiveclerk\Domain\Knowledge\DocumentRepositoryInterface;
+use Hiveclerk\Domain\Knowledge\DocumentSummary;
 use Hiveclerk\Domain\Shared\Pagination;
 
 /**
@@ -44,16 +45,50 @@ final class DocumentRepository extends AbstractRepository implements DocumentRep
 	}
 
 	public function forSource( int $sourceId, Pagination $pagination ): array {
-		$rows = $this->fetchAll(
-			'source_id = %d',
-			array( $sourceId ),
-			'id',
-			'ASC',
+		$table = $this->tableName();
+
+		/*
+		 * Named columns rather than `fetchAll()`, which is `SELECT *`. The
+		 * body is a LONGTEXT this list never shows, and reading twenty of
+		 * them per page is the single most wasteful query the admin makes.
+		 * The list is literal — no part of it comes from the request —
+		 * which is the same rule the sortable-column allowlist follows and
+		 * the reason an identifier position is safe here.
+		 */
+		$sql = $this->db->prepare(
+			"SELECT id, title, url, token_count, chunk_count, status, metadata
+				FROM `{$table}`
+				WHERE source_id = %d
+				ORDER BY id ASC
+				LIMIT %d OFFSET %d",
+			$sourceId,
 			$pagination->perPage,
 			$pagination->offset()
 		);
 
-		return array_map( fn ( array $row ): Document => $this->hydrate( $row ), $rows );
+		if ( ! is_string( $sql ) ) {
+			return array();
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $this->db->get_results( $sql, ARRAY_A );
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		return array_map(
+			fn ( array $row ): DocumentSummary => new DocumentSummary(
+				id: (int) ( $row['id'] ?? 0 ),
+				title: (string) ( $row['title'] ?? '' ),
+				url: (string) ( $row['url'] ?? '' ),
+				tokenCount: (int) ( $row['token_count'] ?? 0 ),
+				chunkCount: (int) ( $row['chunk_count'] ?? 0 ),
+				status: (string) ( $row['status'] ?? 'pending' ),
+				metadata: $this->json( $row['metadata'] ?? null ),
+			),
+			$rows
+		);
 	}
 
 	public function countForSource( int $sourceId ): int {

@@ -197,6 +197,20 @@ final class KeyStorageTest extends WordPressTestCase {
 		serialize( $credentials );
 	}
 
+	public function testCredentialsRefuseToBeEncodedAsJson(): void {
+		$this->resolver()->store( self::TEST_PROVIDER, self::TEST_KEY );
+
+		$credentials = $this->resolver()->credentials( self::TEST_PROVIDER );
+
+		// `__sleep()` covers serialize() and everything built on it, and
+		// nothing at all for wp_json_encode(), which reads the public
+		// properties straight off the object. One of these reaching a REST
+		// response or a debug log would have carried the key in plain text.
+		$this->expectException( \LogicException::class );
+
+		wp_json_encode( $credentials );
+	}
+
 	/**
 	 * A resolver with no cached state.
 	 *

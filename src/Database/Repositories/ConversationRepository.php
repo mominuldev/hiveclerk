@@ -89,6 +89,7 @@ final class ConversationRepository extends AbstractRepository implements Convers
 			'total_tokens_in'  => $conversation->totalTokensIn,
 			'total_tokens_out' => $conversation->totalTokensOut,
 			'total_cost'       => $conversation->totalCost,
+			'unpriced_calls'   => $conversation->unpricedCalls,
 			'last_message_at'  => $this->stamp( $conversation->lastMessageAt ),
 			'ended_at'         => $this->stamp( $conversation->endedAt ),
 		);
@@ -432,6 +433,7 @@ final class ConversationRepository extends AbstractRepository implements Convers
 			totalTokensIn: (int) ( $row['total_tokens_in'] ?? 0 ),
 			totalTokensOut: (int) ( $row['total_tokens_out'] ?? 0 ),
 			totalCost: (float) ( $row['total_cost'] ?? 0 ),
+			unpricedCalls: (int) ( $row['unpriced_calls'] ?? 0 ),
 			startedAt: $this->time( $row['started_at'] ?? null ),
 			pageTitle: isset( $row['page_title'] ) ? (string) $row['page_title'] : null,
 			tags: $tags,

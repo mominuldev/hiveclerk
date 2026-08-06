@@ -49,6 +49,21 @@ use Hiveclerk\Domain\Lead\VisitorRepositoryInterface;
 final class PersonalDataEraser {
 
 	/**
+	 * Conversations removed per pass.
+	 */
+	private const BATCH = 500;
+
+	/**
+	 * Passes attempted before handing the rest back to WordPress.
+	 *
+	 * Ten thousand conversations for one person is already far outside
+	 * anything this product expects. The ceiling exists so a pathological
+	 * record cannot hold a request open until the execution limit kills it
+	 * mid-erasure, not because reaching it is normal.
+	 */
+	private const MAX_PASSES = 20;
+
+	/**
 	 * Construct.
 	 *
 	 * @param LeadRepositoryInterface         $leads         Leads.
@@ -94,11 +109,16 @@ final class PersonalDataEraser {
 	/**
 	 * Erase everything this plugin holds about an address.
 	 *
-	 * Done in a single pass rather than paginated. Every delete here is
-	 * bounded by one person's records, and the alternative — reporting
-	 * `done: false` and being called again — would mean a half-erased
-	 * person existing between two requests, with the lead gone and their
-	 * transcripts still present if the second call never came.
+	 * Normally one pass. A person with more conversations than a single
+	 * request should delete reports `done: false` and is called again, and
+	 * the lead row is deliberately left in place until its transcripts are
+	 * gone — the lead is the only route to them, so deleting it first would
+	 * strand whatever had not been reached yet. That is the failure this
+	 * pagination exists to prevent, not one it introduces.
+	 *
+	 * The page number is ignored. Erasure is destructive, so every call
+	 * starts from whatever is still there; an offset would skip rows that
+	 * the previous pass had already shifted.
 	 *
 	 * @param string $email Address supplied by the site owner.
 	 * @param int    $page  Page number, unused.
@@ -110,16 +130,17 @@ final class PersonalDataEraser {
 		$normalised = Lead::normaliseEmail( $email );
 
 		if ( null === $normalised ) {
-			return $this->result( false, false, array() );
+			return $this->result( false, false, array(), true );
 		}
 
 		$hash     = Lead::hashEmail( $normalised );
 		$lead     = null === $hash ? null : $this->leads->findByEmailHash( $hash );
 		$removed  = 0;
 		$messages = array();
+		$done     = true;
 
 		if ( null !== $lead && null !== $lead->id ) {
-			$removed += $this->eraseLead( $lead->id );
+			[ $removed, $done ] = $this->eraseLead( $lead->id );
 		}
 
 		$removed += $this->emailLog->deleteForEmail( $normalised );
@@ -147,34 +168,54 @@ final class PersonalDataEraser {
 			);
 		}
 
-		return $this->result( $removed > 0, $retained, $messages );
+		return $this->result( $removed > 0, $retained, $messages, $done );
 	}
 
 	/**
 	 * Remove a lead and everything hanging off it.
 	 *
 	 * @param int $leadId Lead storage id.
-	 * @return int Records removed.
+	 * @return array{0: int, 1: bool} Records removed, and whether the lead is finished.
 	 */
-	private function eraseLead( int $leadId ): int {
-		$removed = 0;
+	private function eraseLead( int $leadId ): array {
+		$removed  = 0;
+		$complete = false;
 
 		/*
 		 * Conversations and visitors first, while `lead_id` still points
 		 * at them. `LeadRepository::delete()` nulls both columns, so a
 		 * lead deleted first takes the only route to its own transcripts
 		 * with it.
+		 *
+		 * Batched rather than fetched whole: the previous single read of
+		 * a thousand rows silently left anything past it behind, and then
+		 * deleted the lead, which made the remainder unreachable through
+		 * any screen. An erasure that reports success while leaving
+		 * transcripts on the site is the one outcome this class exists to
+		 * rule out.
 		 */
-		$conversationIds = array();
+		for ( $pass = 0; $pass < self::MAX_PASSES; $pass++ ) {
+			$conversationIds = array();
 
-		foreach ( $this->conversations->forLead( $leadId, 1000 ) as $conversation ) {
-			if ( null !== $conversation->id ) {
-				$conversationIds[] = $conversation->id;
+			foreach ( $this->conversations->forLead( $leadId, self::BATCH ) as $conversation ) {
+				if ( null !== $conversation->id ) {
+					$conversationIds[] = $conversation->id;
+				}
 			}
+
+			if ( array() === $conversationIds ) {
+				$complete = true;
+
+				break;
+			}
+
+			$removed += $this->conversations->purge( $conversationIds );
 		}
 
-		if ( array() !== $conversationIds ) {
-			$removed += $this->conversations->purge( $conversationIds );
+		// Out of passes with transcripts still present. The lead stays so
+		// the next call can find it again by email hash and carry on.
+		if ( ! $complete ) {
+			return array( $removed, false );
 		}
 
 		$removed += $this->visitors->deleteForLead( $leadId );
@@ -183,7 +224,7 @@ final class PersonalDataEraser {
 			++$removed;
 		}
 
-		return $removed;
+		return array( $removed, true );
 	}
 
 	/**
@@ -192,14 +233,15 @@ final class PersonalDataEraser {
 	 * @param bool               $removed  Whether anything went.
 	 * @param bool               $retained Whether anything stayed.
 	 * @param array<int, string> $messages Notes for the site owner.
+	 * @param bool               $done     Whether there is nothing left to do.
 	 * @return array{items_removed: bool, items_retained: bool, messages: array<int, string>, done: bool}
 	 */
-	private function result( bool $removed, bool $retained, array $messages ): array {
+	private function result( bool $removed, bool $retained, array $messages, bool $done ): array {
 		return array(
 			'items_removed'  => $removed,
 			'items_retained' => $retained,
 			'messages'       => $messages,
-			'done'           => true,
+			'done'           => $done,
 		);
 	}
 }

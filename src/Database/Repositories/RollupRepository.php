@@ -240,7 +240,8 @@ final class RollupRepository extends AbstractRepository implements RollupSourceI
 			(int) ( $usage[ $key ]['tokens_in'] ?? 0 ),
 			(int) ( $usage[ $key ]['tokens_out'] ?? 0 ),
 			(float) ( $usage[ $key ]['cost'] ?? 0.0 ),
-			null === $latency ? null : (int) round( (float) $latency )
+			null === $latency ? null : (int) round( (float) $latency ),
+			(int) ( $usage[ $key ]['unpriced'] ?? 0 )
 		);
 	}
 
@@ -337,10 +338,18 @@ final class RollupRepository extends AbstractRepository implements RollupSourceI
 		$usage = Schema::table( Schema::USAGE_EVENTS );
 
 		$rows = $this->rows(
+			/*
+			 * `SUM(cost)` skips NULLs, so an unpriced call contributes
+			 * nothing and the total looks complete. That is the right sum —
+			 * there is no figure to add — but on its own it turned the
+			 * nullable column M0008 introduced back into a silent zero the
+			 * moment the day was rolled up. The count travels with it.
+			 */
 			"SELECT COALESCE(agent_id, 0) AS k,
 					COALESCE(SUM(tokens_in), 0) AS tokens_in,
 					COALESCE(SUM(tokens_out), 0) AS tokens_out,
-					COALESCE(SUM(cost), 0) AS cost
+					COALESCE(SUM(cost), 0) AS cost,
+					COALESCE(SUM(cost IS NULL), 0) AS unpriced
 				FROM `{$usage}`
 				WHERE occurred_at BETWEEN %s AND %s
 				GROUP BY COALESCE(agent_id, 0)",
@@ -352,6 +361,7 @@ final class RollupRepository extends AbstractRepository implements RollupSourceI
 			'tokens_in'  => 0,
 			'tokens_out' => 0,
 			'cost'       => 0.0,
+			'unpriced'   => 0,
 		);
 
 		foreach ( $rows as $row ) {
@@ -359,6 +369,7 @@ final class RollupRepository extends AbstractRepository implements RollupSourceI
 				'tokens_in'  => (int) $row['tokens_in'],
 				'tokens_out' => (int) $row['tokens_out'],
 				'cost'       => (float) $row['cost'],
+				'unpriced'   => (int) $row['unpriced'],
 			);
 
 			$byAgent[ (int) $row['k'] ] = $slice;
@@ -366,6 +377,7 @@ final class RollupRepository extends AbstractRepository implements RollupSourceI
 			$total['tokens_in']  += $slice['tokens_in'];
 			$total['tokens_out'] += $slice['tokens_out'];
 			$total['cost']       += $slice['cost'];
+			$total['unpriced']   += $slice['unpriced'];
 		}
 
 		// Overwrites any bucket the query produced for unattributed calls,

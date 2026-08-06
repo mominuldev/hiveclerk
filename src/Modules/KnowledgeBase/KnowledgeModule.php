@@ -12,6 +12,7 @@ namespace Hiveclerk\Modules\KnowledgeBase;
 use Hiveclerk\Ai\AiService;
 use Hiveclerk\Core\Capabilities\Capabilities;
 use Hiveclerk\Core\Container\Container;
+use Hiveclerk\Core\Support\LockInterface;
 use Hiveclerk\Core\Module\AbstractModule;
 use Hiveclerk\Api\RestServer;
 use Hiveclerk\Core\Queue\JobRegistry;
@@ -147,7 +148,10 @@ final class KnowledgeModule extends AbstractModule {
 			static fn (): EmbeddingRepositoryInterface => new EmbeddingRepository()
 		);
 
-		$container->singleton( MatrixCache::class, static fn (): MatrixCache => new MatrixCache() );
+		$container->singleton(
+			MatrixCache::class,
+			static fn ( $c ): MatrixCache => new MatrixCache( $c->get( LockInterface::class ) )
+		);
 
 		/*
 		 * The binding the SaaS extraction turns on. Everything above this

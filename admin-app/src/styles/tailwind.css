@@ -9,7 +9,29 @@
  * h1, p, button and input silently wins. Measured before this change:
  * headings rendered #1d2327 and links #3858e9 instead of our tokens.
  */
-@import 'tailwindcss' important;
+/*
+ * `source(none)` turns off automatic content detection, and the @source
+ * below says where to look instead.
+ *
+ * Tailwind 4 discovers classes by scanning the project directory. That
+ * makes the shipped stylesheet a function of every file present at build
+ * time, including files that have nothing to do with the plugin: a
+ * conversation transcript saved at the plugin root put a `.top-20`
+ * utility into the admin CSS, because the words "top-20" appeared in it.
+ *
+ * The rule that breaks is reproducibility. `assets/` is committed —
+ * WordPress.org distributes source ZIPs with no build step — so the CSS
+ * in version control has to be a function of the source in version
+ * control, and nothing else. With automatic detection it was a function
+ * of whatever happened to be lying in the working directory, which
+ * differs per machine and per day, and no gate can catch a diff nobody
+ * can reproduce.
+ *
+ * Only admin-app is listed. The widget does not use Tailwind, and no PHP
+ * in this plugin emits a utility class — checked, not assumed.
+ */
+@import 'tailwindcss' source(none) important;
+@source '../**/*.{ts,tsx}';
 
 /* The theme toggle stamps data-theme on <html> and must win both ways. */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));

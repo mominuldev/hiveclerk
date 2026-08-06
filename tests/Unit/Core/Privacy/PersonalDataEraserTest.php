@@ -235,6 +235,82 @@ final class PersonalDataEraserTest extends TestCase {
 	}
 
 	/**
+	 * Everything goes, not just the first batch.
+	 *
+	 * The regression: the transcripts were read once with a limit of a
+	 * thousand and the lead was deleted straight afterwards, so a person
+	 * with more than that had the remainder left on the site *and* the
+	 * only route to it removed. The erasure reported success. Unreachable
+	 * is not erased, and neither is this.
+	 *
+	 * @return void
+	 */
+	public function testEveryConversationIsErasedNotJustTheFirstBatch(): void {
+		$this->seedLead();
+		$this->seedConversations( 1200 );
+
+		$result = $this->eraser->erase( 'tomas@example.com' );
+
+		$this->assertCount( 1200, $this->conversations->purged );
+		$this->assertSame( array(), $this->conversations->saved );
+		$this->assertArrayNotHasKey( 1, $this->leads->saved );
+		$this->assertTrue( $result['done'] );
+	}
+
+	/**
+	 * An erasure too large for one request keeps the lead and resumes.
+	 *
+	 * The lead row is the only handle on its transcripts — WordPress finds
+	 * it again by email hash on the next call — so a pass that runs out of
+	 * budget must leave it alone. Deleting it and reporting `done: false`
+	 * would strand the remainder exactly as the old single read did.
+	 *
+	 * The count is one past this class's own ceiling of twenty passes of
+	 * five hundred; it needs revisiting if those constants move.
+	 *
+	 * @return void
+	 */
+	public function testAnUnfinishedErasureKeepsTheLeadSoItCanResume(): void {
+		$this->seedLead();
+		$this->seedConversations( 10001 );
+
+		$result = $this->eraser->erase( 'tomas@example.com' );
+
+		$this->assertFalse( $result['done'] );
+		$this->assertArrayHasKey( 1, $this->leads->saved );
+		$this->assertCount( 10000, $this->conversations->purged );
+
+		// The next call finishes it, which is the property that matters.
+		$second = $this->eraser->erase( 'tomas@example.com' );
+
+		$this->assertTrue( $second['done'] );
+		$this->assertSame( array(), $this->conversations->saved );
+		$this->assertArrayNotHasKey( 1, $this->leads->saved );
+	}
+
+	/**
+	 * Attach conversations to the seeded lead.
+	 *
+	 * One shared uuid: these are never looked up by it and generating ten
+	 * thousand of them would dominate the test's runtime.
+	 *
+	 * @param int $count How many.
+	 * @return void
+	 */
+	private function seedConversations( int $count ): void {
+		$uuid = Uuid::generate();
+
+		for ( $id = 1; $id <= $count; $id++ ) {
+			$this->conversations->saved[ $id ] = new Conversation(
+				id: $id,
+				uuid: $uuid,
+				agentId: 1,
+				leadId: 1
+			);
+		}
+	}
+
+	/**
 	 * Store a lead that owns the address under test.
 	 *
 	 * @return void

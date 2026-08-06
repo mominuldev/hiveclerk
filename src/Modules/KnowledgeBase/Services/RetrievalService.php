@@ -67,6 +67,19 @@ final class RetrievalService implements RetrievalServiceInterface {
 	private const KEYWORD_LIMIT = 200;
 
 	/**
+	 * Shortest word InnoDB's full-text index stores.
+	 *
+	 * `innodb_ft_min_token_size`, whose default is 3. Hard-coded rather
+	 * than read from the server on every query: it cannot change without a
+	 * restart, and a `SHOW VARIABLES` round trip on the retrieval path to
+	 * confirm a value that is the default on every host this ships to
+	 * would cost more than the note it produces is worth. A server that
+	 * has lowered it makes this warning occasionally over-cautious, which
+	 * is the harmless direction to be wrong in.
+	 */
+	private const MIN_KEYWORD_TOKEN = 3;
+
+	/**
 	 * What a keyword rank is worth against a vector rank.
 	 *
 	 * ## Why this is not 1.0
@@ -199,6 +212,8 @@ final class RetrievalService implements RetrievalServiceInterface {
 
 			$diagnostics->keywordMs      = ( microtime( true ) - $keywordStarted ) * 1000;
 			$diagnostics->keywordMatches = count( $keywordRanked );
+
+			$this->noteUnsearchableTerms( $query, $diagnostics );
 		}
 
 		$fusionStarted = microtime( true );
@@ -274,6 +289,61 @@ final class RetrievalService implements RetrievalServiceInterface {
 		// a playground query against an empty source explains itself rather
 		// than reporting a missing provider.
 		return $this->embeddings->configured();
+	}
+
+	/**
+	 * Say so when the keyword arm could not see part of the question.
+	 *
+	 * InnoDB's full-text index does not store tokens shorter than
+	 * `innodb_ft_min_token_size`, which is three characters by default and
+	 * is a server variable a plugin cannot change: raising it needs a
+	 * restart and a rebuild of every full-text index on the server.
+	 *
+	 * The awkward part is what that excludes. This arm exists precisely to
+	 * catch the part numbers, SKUs and error codes an embedding has
+	 * nothing to grip on — and a two-character one is exactly the kind of
+	 * term that is invisible here. Measured on MySQL 9.3: `warranty`
+	 * matches, `AI` returns nothing at all.
+	 *
+	 * Nothing can be done about it from inside the product, so the next
+	 * best thing is that the person testing a query and wondering why it
+	 * found nothing is told, rather than left to conclude that retrieval
+	 * is broken.
+	 *
+	 * @param string               $query       The visitor's question.
+	 * @param RetrievalDiagnostics $diagnostics Diagnostics.
+	 * @return void
+	 */
+	private function noteUnsearchableTerms( string $query, RetrievalDiagnostics $diagnostics ): void {
+		$terms = preg_split( '/[^\p{L}\p{N}]+/u', $query, -1, PREG_SPLIT_NO_EMPTY );
+
+		if ( ! is_array( $terms ) ) {
+			return;
+		}
+
+		$short = array();
+
+		foreach ( $terms as $term ) {
+			$length = mb_strlen( $term );
+
+			if ( $length > 0 && $length < self::MIN_KEYWORD_TOKEN ) {
+				$short[ mb_strtolower( $term ) ] = true;
+			}
+		}
+
+		if ( array() === $short ) {
+			return;
+		}
+
+		$diagnostics->note(
+			sprintf(
+				'Keyword search ignored %s: the database does not index words shorter than '
+					. '%d characters, so short codes and abbreviations are found by meaning '
+					. 'or not at all.',
+				implode( ', ', array_map( static fn ( string $t ): string => '"' . $t . '"', array_keys( $short ) ) ),
+				self::MIN_KEYWORD_TOKEN
+			)
+		);
 	}
 
 	/**

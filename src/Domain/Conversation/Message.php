@@ -29,7 +29,7 @@ final class Message {
 	 * @param string|null            $model          Model used.
 	 * @param int                    $tokensIn       Prompt tokens.
 	 * @param int                    $tokensOut      Completion tokens.
-	 * @param float                  $cost           Spend in USD.
+	 * @param float|null             $cost           Spend in USD, null when the model has no published price.
 	 * @param int|null               $latencyMs      Time to complete.
 	 * @param float|null             $retrievalScore Best chunk score.
 	 * @param bool                   $isGrounded     Supported by a citation.
@@ -48,7 +48,7 @@ final class Message {
 		public ?string $model = null,
 		public int $tokensIn = 0,
 		public int $tokensOut = 0,
-		public float $cost = 0.0,
+		public ?float $cost = null,
 		public ?int $latencyMs = null,
 		public ?float $retrievalScore = null,
 		public bool $isGrounded = false,

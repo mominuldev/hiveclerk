@@ -61,9 +61,29 @@ final class StreamBuffer {
 	private const TTL = 5 * MINUTE_IN_SECONDS;
 
 	/**
-	 * Minimum milliseconds between writes.
+	 * Minimum milliseconds between writes, with a persistent object cache.
 	 */
 	private const FLUSH_MS = 150;
+
+	/**
+	 * Minimum milliseconds between writes without one.
+	 *
+	 * A flush rewrites the whole answer so far, not the part that is new —
+	 * the polling client is sent a `replace`, so the buffer has to hold
+	 * the complete text. With Redis that is a memory write and 150 ms is
+	 * free. Without it, every flush is an option row rewritten in
+	 * `wp_options`: a ten-second answer at 150 ms is sixty-odd writes,
+	 * each one longer than the last, for one visitor.
+	 *
+	 * Three times the interval is three times fewer writes. What it costs
+	 * is that text appears in slightly larger steps, and only on the hosts
+	 * where the alternative is hammering the options table — the client
+	 * polls about every 250 ms, so a slower producer mostly means a poll
+	 * that finds nothing new rather than a visitor waiting. Terminal
+	 * events force a write regardless, so the finished answer still lands
+	 * the moment it is complete.
+	 */
+	private const FLUSH_MS_DATABASE = 450;
 
 	/**
 	 * Buffers written this request, keyed by cache key.
@@ -258,9 +278,11 @@ final class StreamBuffer {
 	 * @return void
 	 */
 	private function write( string $key, bool $force ): void {
-		$now = microtime( true ) * 1000;
+		$now       = microtime( true ) * 1000;
+		$persisted = wp_using_ext_object_cache();
+		$interval  = $persisted ? self::FLUSH_MS : self::FLUSH_MS_DATABASE;
 
-		if ( ! $force && isset( $this->lastWrite[ $key ] ) && $now - $this->lastWrite[ $key ] < self::FLUSH_MS ) {
+		if ( ! $force && isset( $this->lastWrite[ $key ] ) && $now - $this->lastWrite[ $key ] < $interval ) {
 			return;
 		}
 
@@ -277,7 +299,7 @@ final class StreamBuffer {
 
 		wp_cache_set( $key, $encoded, self::GROUP, self::TTL );
 
-		if ( ! wp_using_ext_object_cache() ) {
+		if ( ! $persisted ) {
 			set_transient( self::TRANSIENT_PREFIX . $key, $encoded, self::TTL );
 		}
 	}

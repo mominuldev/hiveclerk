@@ -45,6 +45,13 @@ final class DailyMetrics {
 	 * @param int        $tokensOut       Output tokens billed.
 	 * @param float      $cost            Spend in USD for the priced calls.
 	 * @param int|null   $avgLatencyMs    Mean reply latency, null when nothing was answered.
+	 * @param int        $unpriced        Calls whose cost is not known, and so are not in $cost.
+	 *
+	 * `$unpriced` is last rather than beside `$cost`, where it belongs
+	 * semantically, because two call sites build this positionally and
+	 * moving the tail would have silently shifted a latency into a count.
+	 * It travels with `$cost` everywhere else: a spend figure without it is
+	 * a number that quietly omits whatever could not be priced.
 	 */
 	public function __construct(
 		public readonly string $date,
@@ -62,7 +69,8 @@ final class DailyMetrics {
 		public readonly int $tokensIn = 0,
 		public readonly int $tokensOut = 0,
 		public readonly float $cost = 0.0,
-		public readonly ?int $avgLatencyMs = null
+		public readonly ?int $avgLatencyMs = null,
+		public readonly int $unpriced = 0
 	) {
 	}
 
@@ -135,7 +143,8 @@ final class DailyMetrics {
 			$this->tokensIn + $other->tokensIn,
 			$this->tokensOut + $other->tokensOut,
 			$this->cost + $other->cost,
-			self::weightedLatency( $this, $other )
+			self::weightedLatency( $this, $other ),
+			$this->unpriced + $other->unpriced
 		);
 	}
 
@@ -188,6 +197,9 @@ final class DailyMetrics {
 			'tokens_in'        => $this->tokensIn,
 			'tokens_out'       => $this->tokensOut,
 			'cost'             => round( $this->cost, 6 ),
+			// Beside the spend, always. A cost figure on its own is a
+			// number that silently omits whatever could not be priced.
+			'unpriced'         => $this->unpriced,
 			'avg_latency_ms'   => $this->avgLatencyMs,
 		);
 	}

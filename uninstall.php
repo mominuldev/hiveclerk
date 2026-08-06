@@ -26,6 +26,20 @@ if ( ! $hiveclerk_purge ) {
 	return;
 }
 
+/*
+ * Guarded rather than required outright. This runs inside WordPress's
+ * uninstall flow, where a fatal leaves the plugin half-removed and the
+ * screen showing an error the site owner cannot act on. A missing or
+ * broken vendor directory — an interrupted update, a partial upload, a
+ * deploy that excluded it — is exactly when that happens, and leaving the
+ * data in place is the recoverable outcome: the tables can still be
+ * dropped by reinstalling and uninstalling again, whereas a fatal here
+ * strands them with no route back.
+ */
+if ( ! file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
+	return;
+}
+
 require_once __DIR__ . '/vendor/autoload.php';
 
 global $wpdb;

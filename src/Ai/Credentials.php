@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace Hiveclerk\Ai;
 
+use JsonSerializable;
 use SensitiveParameter;
 
 /**
@@ -23,7 +24,7 @@ use SensitiveParameter;
  * credential can never end up in a transient, a queued job payload or a
  * debug log through an accidental serialize().
  */
-final class Credentials {
+final class Credentials implements JsonSerializable {
 
 	/**
 	 * Construct.
@@ -67,6 +68,24 @@ final class Credentials {
 	 */
 	public function __sleep(): array {
 		throw new \LogicException( 'Credentials must not be serialised.' );
+	}
+
+	/**
+	 * Refuse to be JSON encoded, for the same reason.
+	 *
+	 * `__sleep()` covers `serialize()` and everything built on it — a
+	 * transient, a job payload, a cached option. It does nothing for
+	 * `wp_json_encode()`, which reads the public properties directly, so
+	 * one of these reaching a REST response or a debug log would have
+	 * carried the key out in plain text. The properties are public because
+	 * the class is a value object; this is what stops that being a hole.
+	 *
+	 * @return array<string, string>
+	 *
+	 * @throws \LogicException Always.
+	 */
+	public function jsonSerialize(): array {
+		throw new \LogicException( 'Credentials must not be encoded as JSON.' );
 	}
 
 	/**

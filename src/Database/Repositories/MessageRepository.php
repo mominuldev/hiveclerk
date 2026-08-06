@@ -137,7 +137,10 @@ final class MessageRepository extends AbstractRepository implements MessageRepos
 			model: isset( $row['model'] ) ? (string) $row['model'] : null,
 			tokensIn: (int) ( $row['tokens_in'] ?? 0 ),
 			tokensOut: (int) ( $row['tokens_out'] ?? 0 ),
-			cost: (float) ( $row['cost'] ?? 0 ),
+			// Null stays null. Casting an unpriced call to 0.0 here would
+			// undo the column being nullable at all — the row says "not
+			// known" and the entity would say "free".
+			cost: isset( $row['cost'] ) ? (float) $row['cost'] : null,
 			latencyMs: isset( $row['latency_ms'] ) ? (int) $row['latency_ms'] : null,
 			retrievalScore: isset( $row['retrieval_score'] ) ? (float) $row['retrieval_score'] : null,
 			isGrounded: (bool) ( $row['is_grounded'] ?? false ),

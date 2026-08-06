@@ -624,6 +624,9 @@ final class ConversationController extends AbstractController {
 			'preview'         => $this->preview( $conversation ),
 			'tokens'          => $conversation->totalTokens(),
 			'cost'            => round( $conversation->totalCost, 6 ),
+			// The spend above covers the calls that had a price. Without
+			// this the screen reports a total that silently omits the rest.
+			'unpriced_calls'  => $conversation->unpricedCalls,
 			'started_at'      => $conversation->startedAt?->format( 'Y-m-d H:i:s' ),
 			'last_message_at' => $conversation->lastMessageAt?->format( 'Y-m-d H:i:s' ),
 			'resolved_by_ai'  => $conversation->resolvedByAi,
@@ -651,7 +654,9 @@ final class ConversationController extends AbstractController {
 			'created_at'      => $message->createdAt?->format( 'Y-m-d H:i:s' ),
 			'tokens_in'       => $message->tokensIn,
 			'tokens_out'      => $message->tokensOut,
-			'cost'            => round( $message->cost, 6 ),
+			// Null rather than 0 when the model has no published price, so
+			// the screen can say "not known" instead of "free".
+			'cost'            => null === $message->cost ? null : round( $message->cost, 6 ),
 			'latency_ms'      => $message->latencyMs,
 			'retrieval_score' => $message->retrievalScore,
 			'grounded'        => $message->isGrounded,

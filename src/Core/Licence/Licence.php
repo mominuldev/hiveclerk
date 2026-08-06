@@ -36,8 +36,9 @@ final class Licence {
 	 * @param string|null            $masked    Display form of the key, or null when there is none.
 	 * @param int                    $sites     Sites this key is active on.
 	 * @param DateTimeImmutable|null $expiresAt When it lapses.
-	 * @param DateTimeImmutable|null $checkedAt When the server last answered.
-	 * @param string|null            $customer  Who it belongs to, as the server reported.
+	 * @param DateTimeImmutable|null $checkedAt   When a check was last attempted.
+	 * @param string|null            $customer    Who it belongs to, as the server reported.
+	 * @param DateTimeImmutable|null $confirmedAt When the server last gave an answer we could authenticate.
 	 */
 	public function __construct(
 		public readonly Tier $tier = Tier::Free,
@@ -46,8 +47,28 @@ final class Licence {
 		public readonly int $sites = 1,
 		public readonly ?DateTimeImmutable $expiresAt = null,
 		public readonly ?DateTimeImmutable $checkedAt = null,
-		public readonly ?string $customer = null
+		public readonly ?string $customer = null,
+		public readonly ?DateTimeImmutable $confirmedAt = null
 	) {
+	}
+
+	/**
+	 * How long since the server last told us anything we could believe.
+	 *
+	 * `checkedAt` cannot answer this: it is written on every attempt,
+	 * including the ones that failed, so on a site that can never reach
+	 * the server it advances every twelve hours for ever. That is the
+	 * whole reason a second timestamp exists.
+	 *
+	 * @param DateTimeImmutable $now Reference time.
+	 * @return int|null Seconds, or null when there has never been one.
+	 */
+	public function secondsSinceConfirmed( DateTimeImmutable $now ): ?int {
+		if ( null === $this->confirmedAt ) {
+			return null;
+		}
+
+		return max( 0, $now->getTimestamp() - $this->confirmedAt->getTimestamp() );
 	}
 
 	/**
@@ -131,6 +152,11 @@ final class Licence {
 			'customer'       => $this->customer,
 			'expires_at'     => $this->expiresAt?->format( 'c' ),
 			'checked_at'     => $this->checkedAt?->format( 'c' ),
+			// When the server last said something we could authenticate,
+			// which is not the same as when we last asked. A screen showing
+			// only `checked_at` reports a healthy-looking recent timestamp
+			// on a site that has not had a real answer in a month.
+			'confirmed_at'   => $this->confirmedAt?->format( 'c' ),
 			'days_remaining' => $this->daysRemaining( $now ),
 			'limits'         => array(
 				'clerks' => $effective->clerkLimit(),

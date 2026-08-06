@@ -51,7 +51,35 @@ final class AuditRedactionTest extends TestCase {
 			array( 'Authorization' ),
 			array( 'webhook_signature' ),
 			array( 'aws_credential' ),
+			// A Slack incoming-webhook URL is a bearer credential: anyone
+			// holding it can post into the customer's channel. It looks
+			// like an address, matched none of the other hints, and was
+			// written to the log in full.
+			array( 'slack_webhook' ),
+			array( 'webhook' ),
 		);
+	}
+
+	/**
+	 * Redacting every address would break the log to fix one field.
+	 *
+	 * `webhook` is a hint; a bare `url` deliberately is not. These are the
+	 * context that makes an entry worth reading, and none of them is a
+	 * credential — a rule broad enough to catch them would trade a working
+	 * control for a useless one.
+	 */
+	public function testOrdinaryAddressesAreNotRedacted(): void {
+		$clean = AuditLogger::redact(
+			array(
+				'page_url'     => 'https://example.test/pricing',
+				'site_url'     => 'https://example.test',
+				'document_url' => 'https://example.test/faq',
+			)
+		);
+
+		$this->assertSame( 'https://example.test/pricing', $clean['page_url'] );
+		$this->assertSame( 'https://example.test', $clean['site_url'] );
+		$this->assertSame( 'https://example.test/faq', $clean['document_url'] );
 	}
 
 	public function testKeepsTheFieldSoTheChangeIsStillVisible(): void {

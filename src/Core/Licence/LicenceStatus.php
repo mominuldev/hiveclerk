@@ -29,6 +29,23 @@ enum LicenceStatus: string {
 	case Unreachable = 'unreachable';
 
 	/**
+	 * Unreachable for so long that entitlements can no longer rest on it.
+	 *
+	 * Every safety valve in this system opens the same way: a signature
+	 * that cannot be verified is `Unreachable`, a missing sodium extension
+	 * skips verification, and `Unreachable` keeps whatever the site
+	 * already had. Each is right on its own — none of them should switch a
+	 * paying customer off because of a network fault. Composed, and with
+	 * no time limit, they meant that anyone able to keep this site from
+	 * reaching the licence server kept it on its current tier for ever.
+	 *
+	 * This is that time limit, and it is deliberately not `Invalid`: we
+	 * still know nothing about the key, so we still do not claim anything
+	 * about it.
+	 */
+	case Unverified = 'unverified';
+
+	/**
 	 * Parse a stored or remote value.
 	 *
 	 * @param string|null $value Raw value.
@@ -48,6 +65,18 @@ enum LicenceStatus: string {
 	}
 
 	/**
+	 * Whether this state means the server's answer is simply not known.
+	 *
+	 * Both of these must never be reported to an operator as a problem
+	 * with their key, because neither is evidence about the key at all.
+	 *
+	 * @return bool
+	 */
+	public function isUnconfirmed(): bool {
+		return self::Unreachable === $this || self::Unverified === $this;
+	}
+
+	/**
 	 * Human label.
 	 *
 	 * @return string
@@ -60,6 +89,7 @@ enum LicenceStatus: string {
 			self::Invalid     => 'Not recognised',
 			self::SeatLimit   => 'Site limit reached',
 			self::Unreachable => 'Could not be checked',
+			self::Unverified  => 'Not confirmed recently',
 		};
 	}
 
@@ -76,6 +106,9 @@ enum LicenceStatus: string {
 			self::Invalid     => 'Check the key against your purchase receipt, or contact support.',
 			self::SeatLimit   => 'Deactivate the licence on a site you no longer use, or move up a plan.',
 			self::Unreachable => 'The licence server could not be reached. Nothing has been switched off; this will retry on its own.',
+			self::Unverified  => 'The licence server has not been reachable for long enough that paid features have paused. '
+				. 'Your key has not been rejected and nothing has been deleted — everything returns the moment a check gets through. '
+				. 'If this site blocks outbound HTTPS, allowing it is the fix.',
 		};
 	}
 }
