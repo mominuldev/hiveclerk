@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 
 export interface SystemStatus {
@@ -42,6 +42,7 @@ export interface SystemHealth {
   };
   wordpress: { version: string; multisite: boolean; cron_disabled: boolean };
   licence: { sodium: boolean; key_configured: boolean; verifying: boolean };
+  encryption: { rotating: boolean; outstanding: number };
   mysql: { version: string; mariadb: boolean; charset: string; collation: string };
   database: {
     version: number;
@@ -95,4 +96,48 @@ export function useSystemHealth() {
       (await api.get<SystemHealth>('system/health', undefined, signal)).data,
     refetchOnWindowFocus: false,
   });
+}
+
+/** Where a rotation has got to. */
+export interface RotationState {
+  rotating: boolean;
+  /** Labels of secrets not yet moved. Never the secrets themselves. */
+  outstanding: string[];
+  rewritten?: number;
+  remaining?: number;
+  unreadable?: number;
+}
+
+const healthKey = ['system', 'health'] as const;
+
+/**
+ * The three steps of a key rotation.
+ *
+ * Separate mutations rather than one, because they are separate decisions.
+ * Starting is safe and reversible-by-finishing; finishing destroys the old
+ * key and is the only one that can lose data, so it must not be something a
+ * caller can trigger by retrying the first.
+ */
+export function useKeyRotation() {
+  const client = useQueryClient();
+  const refresh = () => void client.invalidateQueries({ queryKey: healthKey });
+
+  const begin = useMutation({
+    mutationFn: async () => (await api.post<RotationState>('system/encryption/rotation')).data,
+    onSuccess: refresh,
+  });
+
+  const sweep = useMutation({
+    mutationFn: async () =>
+      (await api.post<RotationState>('system/encryption/rotation/sweep')).data,
+    onSuccess: refresh,
+  });
+
+  const finish = useMutation({
+    mutationFn: async () =>
+      (await api.post<RotationState>('system/encryption/rotation/finish')).data,
+    onSuccess: refresh,
+  });
+
+  return { begin, sweep, finish };
 }

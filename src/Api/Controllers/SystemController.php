@@ -12,7 +12,9 @@ namespace Hiveclerk\Api\Controllers;
 use Hiveclerk\Api\AbstractController;
 use Hiveclerk\Api\Response\ApiResponse;
 use Hiveclerk\Core\Capabilities\Capabilities;
+use Hiveclerk\Core\Audit\AuditLogger;
 use Hiveclerk\Core\Licence\LicenceSignature;
+use Hiveclerk\Core\Security\SecretRotator;
 use Hiveclerk\Core\Queue\JobHeartbeat;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Core\Support\ClockInterface;
@@ -48,6 +50,8 @@ final class SystemController extends AbstractController {
 	 * @param QueueInterface                     $queue         Background queue.
 	 * @param ServerInfo                         $server        Database server.
 	 * @param KeyResolver                        $keys          Provider credentials.
+	 * @param SecretRotator                      $rotator       Encryption key rotation.
+	 * @param AuditLogger                        $audit         Audit log.
 	 */
 	public function __construct(
 		private readonly Migrator $migrator,
@@ -58,7 +62,9 @@ final class SystemController extends AbstractController {
 		private readonly KnowledgeSourceRepositoryInterface $sources,
 		private readonly QueueInterface $queue,
 		private readonly ServerInfo $server,
-		private readonly KeyResolver $keys
+		private readonly KeyResolver $keys,
+		private readonly SecretRotator $rotator,
+		private readonly AuditLogger $audit
 	) {
 	}
 
@@ -86,6 +92,146 @@ final class SystemController extends AbstractController {
 				'callback'            => array( $this, 'health' ),
 				'permission_callback' => $this->requires( Capabilities::MANAGE_SETTINGS ),
 			)
+		);
+
+		/*
+		 * Three steps rather than one button.
+		 *
+		 * Rotation cannot be atomic: the sweep is bounded so it cannot time
+		 * out half-way through an install with many integrations, and the
+		 * window has to stay open until the operator's own screen confirms
+		 * everything moved. Collapsing this into one call would mean either
+		 * an unbounded request or a rotation that closes on a guess.
+		 */
+		register_rest_route(
+			self::NAMESPACE,
+			'/system/encryption/rotation',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'beginRotation' ),
+				'permission_callback' => $this->requires( Capabilities::MANAGE_SETTINGS ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/system/encryption/rotation/sweep',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'sweepRotation' ),
+				'permission_callback' => $this->requires( Capabilities::MANAGE_SETTINGS ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/system/encryption/rotation/finish',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'finishRotation' ),
+				'permission_callback' => $this->requires( Capabilities::MANAGE_SETTINGS ),
+			)
+		);
+	}
+
+	/**
+	 * Open the dual-key window and mint a new key.
+	 *
+	 * @param WP_REST_Request<array<string, mixed>> $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function beginRotation( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		unset( $request );
+
+		if ( ! $this->rotator->begin() ) {
+			return new WP_Error(
+				'hiveclerk_rotation_in_progress',
+				__( 'A key rotation is already under way. Finish it before starting another.', 'hiveclerk' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		$this->audit->record( AuditLogger::KEY_ROTATION_STARTED );
+
+		return ApiResponse::ok( $this->rotationState() );
+	}
+
+	/**
+	 * Rewrite one bounded batch of secrets under the new key.
+	 *
+	 * @param WP_REST_Request<array<string, mixed>> $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function sweepRotation( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		unset( $request );
+
+		if ( ! $this->rotator->isRotating() ) {
+			return new WP_Error(
+				'hiveclerk_no_rotation',
+				__( 'No key rotation is in progress.', 'hiveclerk' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		$result = $this->rotator->sweep();
+
+		$this->audit->record( AuditLogger::KEY_ROTATION_SWEPT, $result );
+
+		return ApiResponse::ok( $this->rotationState() + $result );
+	}
+
+	/**
+	 * Close the window, retiring the old key for good.
+	 *
+	 * @param WP_REST_Request<array<string, mixed>> $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function finishRotation( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		unset( $request );
+
+		if ( ! $this->rotator->isRotating() ) {
+			return new WP_Error(
+				'hiveclerk_no_rotation',
+				__( 'No key rotation is in progress.', 'hiveclerk' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		/*
+		 * The refusal that matters. Closing with readable secrets still on
+		 * the old key destroys them, and nothing would report it until a
+		 * sync failed weeks later.
+		 */
+		if ( ! $this->rotator->finish() ) {
+			return new WP_Error(
+				'hiveclerk_rotation_incomplete',
+				__( 'Some secrets have not been moved to the new key yet. Run the sweep until none remain.', 'hiveclerk' ),
+				array(
+					'status'      => 409,
+					'outstanding' => $this->rotator->outstanding(),
+				)
+			);
+		}
+
+		$this->audit->record( AuditLogger::KEY_ROTATION_FINISHED );
+
+		return ApiResponse::ok( $this->rotationState() );
+	}
+
+	/**
+	 * What a screen needs to render the rotation.
+	 *
+	 * @return array{rotating: bool, outstanding: list<string>}
+	 */
+	private function rotationState(): array {
+		return array(
+			'rotating'    => $this->rotator->isRotating(),
+			/*
+			 * Labels, never ciphertext or plaintext. "Provider key: openai"
+			 * is what an operator needs to act; the value is the thing this
+			 * whole subsystem exists to keep off the wire.
+			 */
+			'outstanding' => $this->rotator->outstanding(),
 		);
 	}
 
@@ -197,6 +343,10 @@ final class SystemController extends AbstractController {
 				 * TLS alone, and until this block existed it did so with
 				 * nothing anywhere saying so.
 				 */
+				'encryption'   => array(
+					'rotating'    => $this->rotator->isRotating(),
+					'outstanding' => count( $this->rotator->outstanding() ),
+				),
 				'licence'      => array(
 					'sodium'         => LicenceSignature::isSupported(),
 					'key_configured' => LicenceSignature::isConfigured(),

@@ -39,6 +39,18 @@ final class AuditLogger {
 	public const PROVIDER_MODEL_SET   = 'provider.model.set';
 	public const SETTINGS_UPDATED     = 'settings.updated';
 
+	/*
+	 * Rotation is three separate records, not one.
+	 *
+	 * "Started" and "finished" can be days apart, and the gap is the window
+	 * in which the old key still works. An audit that only recorded the
+	 * finish would leave no evidence of how long the site spent with two
+	 * live keys — which is exactly what an incident review asks about.
+	 */
+	public const KEY_ROTATION_STARTED  = 'encryption.rotation.started';
+	public const KEY_ROTATION_SWEPT    = 'encryption.rotation.swept';
+	public const KEY_ROTATION_FINISHED = 'encryption.rotation.finished';
+
 	/**
 	 * Field names whose values never get written.
 	 *

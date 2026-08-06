@@ -72,6 +72,21 @@ final class EncryptorTest extends TestCase {
 			}
 		);
 
+		Functions\when( 'update_option' )->alias(
+			function ( string $name, $value ) {
+				$this->options[ $name ] = $value;
+
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			function ( string $name ) {
+				unset( $this->options[ $name ] );
+
+				return true;
+			}
+		);
+
 		$this->encryptor = new Encryptor();
 	}
 
@@ -194,5 +209,94 @@ final class EncryptorTest extends TestCase {
 		);
 
 		return 'v1:' . base64_encode( $iv . $tag . $ciphertext );
+	}
+
+	/**
+	 * The property the whole rotation design rests on.
+	 *
+	 * Changing the salt makes every stored secret unreadable at the instant
+	 * it changes. If this fails, "rotate the key" means "lose every provider
+	 * key" — and silently, because unreadable reads as "not configured"
+	 * everywhere in this plugin.
+	 */
+	public function testASecretStaysReadableAcrossTheWindow(): void {
+		$ciphertext = $this->encryptor->encrypt( 'sk-live-4f9a2c7e1b6d8035' );
+
+		self::assertTrue( $this->encryptor->beginRotation() );
+
+		self::assertSame( 'sk-live-4f9a2c7e1b6d8035', $this->encryptor->decrypt( $ciphertext ) );
+	}
+
+	public function testTheSaltActuallyChanged(): void {
+		$before = $this->options['hiveclerk_encryption_salt'];
+
+		$this->encryptor->beginRotation();
+
+		// The control for the test above. If the salt never moved, "still
+		// readable" would be true for the least interesting reason.
+		self::assertNotSame( $before, $this->options['hiveclerk_encryption_salt'] );
+		self::assertSame( $before, $this->options['hiveclerk_encryption_salt_previous'] );
+	}
+
+	public function testASecretWrittenBeforeTheWindowIsNotCurrent(): void {
+		$ciphertext = $this->encryptor->encrypt( 'sk-live-4f9a2c7e1b6d8035' );
+
+		$this->encryptor->beginRotation();
+
+		// This is what tells a sweep there is work to do.
+		self::assertFalse( $this->encryptor->isCurrent( $ciphertext ) );
+		self::assertTrue( $this->encryptor->isCurrent( $this->encryptor->encrypt( 'anything' ) ) );
+	}
+
+	public function testASecondRotationIsRefused(): void {
+		self::assertTrue( $this->encryptor->beginRotation() );
+
+		/*
+		 * Two salts is all we hold. A second rotation would push the oldest
+		 * off the end and strand everything not yet rewritten under the
+		 * first one — permanently, and without saying so.
+		 */
+		self::assertFalse( $this->encryptor->beginRotation() );
+	}
+
+	public function testClosingTheWindowMakesTheOldKeyWorthless(): void {
+		$stranded = $this->encryptor->encrypt( 'sk-live-never-rewritten' );
+
+		$this->encryptor->beginRotation();
+
+		$rewritten = $this->encryptor->encrypt( (string) $this->encryptor->decrypt( $stranded ) );
+
+		$this->encryptor->finishRotation();
+
+		// The point of rotating: what the retired key protected can no
+		// longer be read with it.
+		self::assertNull( $this->encryptor->decrypt( $stranded ) );
+
+		// And what the sweep moved is still there.
+		self::assertSame( 'sk-live-never-rewritten', $this->encryptor->decrypt( $rewritten ) );
+	}
+
+	public function testRotationStateIsReported(): void {
+		self::assertFalse( $this->encryptor->isRotating() );
+
+		$this->encryptor->beginRotation();
+		self::assertTrue( $this->encryptor->isRotating() );
+
+		$this->encryptor->finishRotation();
+		self::assertFalse( $this->encryptor->isRotating() );
+	}
+
+	public function testALegacyValueAlsoSurvivesTheWindow(): void {
+		$legacy = $this->legacyCiphertext( 'sk-live-written-under-v1' );
+
+		$this->encryptor->beginRotation();
+
+		/*
+		 * v1 derives with the per-install salt as its HKDF *salt*, so
+		 * rotating strands v1 exactly as it strands v2. Easy to miss,
+		 * because the version prefix makes it look like a separate path
+		 * that the new salt does not touch.
+		 */
+		self::assertSame( 'sk-live-written-under-v1', $this->encryptor->decrypt( $legacy ) );
 	}
 }

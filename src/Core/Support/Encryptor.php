@@ -47,11 +47,22 @@ use SensitiveParameter;
  */
 final class Encryptor {
 
-	private const CIPHER         = 'aes-256-gcm';
-	private const SALT_OPTION    = 'hiveclerk_encryption_salt';
-	private const VERSION        = 'v2';
-	private const LEGACY_VERSION = 'v1';
-	private const TAG_LENGTH     = 16;
+	private const CIPHER      = 'aes-256-gcm';
+	private const SALT_OPTION = 'hiveclerk_encryption_salt';
+
+	/**
+	 * The salt being retired, readable but never written with.
+	 *
+	 * Present only while a rotation is in progress. Rotating the salt makes
+	 * every stored secret unreadable the instant it changes, so the old one
+	 * has to outlive it until the last ciphertext has been rewritten —
+	 * otherwise "rotate the key" means "lose every provider key", which is
+	 * an operator's worst day rather than their recovery from one.
+	 */
+	private const SALT_PREVIOUS_OPTION = 'hiveclerk_encryption_salt_previous';
+	private const VERSION              = 'v2';
+	private const LEGACY_VERSION       = 'v1';
+	private const TAG_LENGTH           = 16;
 
 	/**
 	 * Shortest secret whose middle can be hidden without revealing the ends.
@@ -86,7 +97,7 @@ final class Encryptor {
 
 		$iv  = random_bytes( $ivLength );
 		$tag = '';
-		$key = $this->key( self::VERSION );
+		$key = $this->key( self::VERSION, $this->salt() );
 
 		// The current derivation cannot fail — its key material is the
 		// per-install salt, which is generated on demand. Checked anyway so
@@ -144,12 +155,6 @@ final class Encryptor {
 			return null;
 		}
 
-		$key = $this->key( $version );
-
-		if ( null === $key ) {
-			return null;
-		}
-
 		$binary = base64_decode( $parts[1], true );
 
 		if ( false === $binary ) {
@@ -166,13 +171,166 @@ final class Encryptor {
 		$tag        = substr( $binary, $ivLength, self::TAG_LENGTH );
 		$ciphertext = substr( $binary, $ivLength + self::TAG_LENGTH );
 
+		/*
+		 * The current salt first, then the one being retired.
+		 *
+		 * Trying two keys is safe rather than sloppy: GCM authenticates, so
+		 * the wrong key fails the tag check and returns false instead of
+		 * returning plausible rubbish. There is no oracle here either — both
+		 * outcomes are the same `null` to the caller.
+		 *
+		 * Both versions get the fallback, not just v2. The v1 derivation
+		 * takes the per-install salt as its HKDF salt, so rotating strands
+		 * v1 ciphertext exactly as it strands v2.
+		 */
+		foreach ( $this->saltsToTry() as $installSalt ) {
+			$key = $this->key( $version, $installSalt );
+
+			if ( null === $key ) {
+				continue;
+			}
+
+			$plaintext = openssl_decrypt(
+				$ciphertext,
+				self::CIPHER,
+				$key,
+				OPENSSL_RAW_DATA,
+				$iv,
+				$tag
+			);
+
+			if ( false !== $plaintext ) {
+				return $plaintext;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Whether this ciphertext is already written under the current salt.
+	 *
+	 * Lets a rotation sweep skip what it has already done, so an interrupted
+	 * run resumes instead of restarting — and so re-running it on a finished
+	 * install is free rather than a full rewrite of every secret.
+	 *
+	 * @param string $payload Ciphertext.
+	 * @return bool
+	 */
+	public function isCurrent( string $payload ): bool {
+		if ( ! str_starts_with( $payload, self::VERSION . ':' ) ) {
+			return false;
+		}
+
+		$previous = get_option( self::SALT_PREVIOUS_OPTION );
+
+		// With no rotation running, anything that reads at all is current.
+		if ( ! is_string( $previous ) || '' === $previous ) {
+			return null !== $this->decrypt( $payload );
+		}
+
+		return null !== $this->openWith( $payload, $this->salt() );
+	}
+
+	/**
+	 * Begin a rotation: retire the current salt and mint a new one.
+	 *
+	 * Refuses while a rotation is already in progress. A second rotation
+	 * would push the oldest salt off the end of the two we can hold, and
+	 * every secret not yet rewritten under the first one would become
+	 * permanently unreadable — silently, because an unreadable key reads as
+	 * "not configured".
+	 *
+	 * @return bool False when a rotation is already under way.
+	 */
+	public function beginRotation(): bool {
+		if ( $this->isRotating() ) {
+			return false;
+		}
+
+		$current = $this->salt();
+
+		update_option( self::SALT_PREVIOUS_OPTION, $current, false );
+		update_option( self::SALT_OPTION, bin2hex( random_bytes( 32 ) ), false );
+
+		return true;
+	}
+
+	/**
+	 * Whether a rotation is in progress.
+	 *
+	 * @return bool
+	 */
+	public function isRotating(): bool {
+		$previous = get_option( self::SALT_PREVIOUS_OPTION );
+
+		return is_string( $previous ) && '' !== $previous;
+	}
+
+	/**
+	 * Drop the retired salt, ending the window.
+	 *
+	 * Only safe once every stored secret has been rewritten. Anything still
+	 * encrypted under the old salt becomes unreadable here, which is the
+	 * point — that is what makes the old key material worthless — and is why
+	 * the caller has to have finished sweeping first.
+	 *
+	 * @return void
+	 */
+	public function finishRotation(): void {
+		delete_option( self::SALT_PREVIOUS_OPTION );
+	}
+
+	/**
+	 * The install salts to attempt, current first.
+	 *
+	 * @return list<string>
+	 */
+	private function saltsToTry(): array {
+		$salts    = array( $this->salt() );
+		$previous = get_option( self::SALT_PREVIOUS_OPTION );
+
+		if ( is_string( $previous ) && '' !== $previous && $previous !== $salts[0] ) {
+			$salts[] = $previous;
+		}
+
+		return $salts;
+	}
+
+	/**
+	 * Decrypt against one specific install salt.
+	 *
+	 * @param string $payload     Ciphertext.
+	 * @param string $installSalt Salt to derive with.
+	 * @return string|null
+	 */
+	private function openWith( string $payload, string $installSalt ): ?string {
+		$parts = explode( ':', $payload, 2 );
+
+		if ( 2 !== count( $parts ) ) {
+			return null;
+		}
+
+		$key    = $this->key( $parts[0], $installSalt );
+		$binary = base64_decode( $parts[1], true );
+
+		if ( null === $key || false === $binary ) {
+			return null;
+		}
+
+		$ivLength = openssl_cipher_iv_length( self::CIPHER );
+
+		if ( false === $ivLength || strlen( $binary ) <= $ivLength + self::TAG_LENGTH ) {
+			return null;
+		}
+
 		$plaintext = openssl_decrypt(
-			$ciphertext,
+			substr( $binary, $ivLength + self::TAG_LENGTH ),
 			self::CIPHER,
 			$key,
 			OPENSSL_RAW_DATA,
-			$iv,
-			$tag
+			substr( $binary, 0, $ivLength ),
+			substr( $binary, $ivLength, self::TAG_LENGTH )
 		);
 
 		return false === $plaintext ? null : $plaintext;
@@ -199,10 +357,11 @@ final class Encryptor {
 	/**
 	 * Derive the 256-bit encryption key for one ciphertext version.
 	 *
-	 * @param string $version Ciphertext version prefix.
+	 * @param string $version     Ciphertext version prefix.
+	 * @param string $installSalt Per-install salt to derive from.
 	 * @return string|null Null when this install cannot rebuild that key.
 	 */
-	private function key( string $version ): ?string {
+	private function key( string $version, string $installSalt ): ?string {
 		if ( self::LEGACY_VERSION === $version ) {
 			$salts = $this->wordpressSalts();
 
@@ -217,10 +376,10 @@ final class Encryptor {
 				return null;
 			}
 
-			return hash_hkdf( 'sha256', $salts, 32, 'hiveclerk-secret-v1', $this->salt() );
+			return hash_hkdf( 'sha256', $salts, 32, 'hiveclerk-secret-v1', $installSalt );
 		}
 
-		return hash_hkdf( 'sha256', $this->salt(), 32, 'hiveclerk-secret-v2', $this->wordpressSalts() );
+		return hash_hkdf( 'sha256', $installSalt, 32, 'hiveclerk-secret-v2', $this->wordpressSalts() );
 	}
 
 	/**

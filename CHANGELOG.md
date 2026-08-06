@@ -6,6 +6,128 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### The encryption key can be rotated, which it could not be before
+
+**Goal:** Phase 6's last item. Until now a customer whose `wp-config.php`
+leaked had no recovery: the key protecting every provider key, integration
+token and the licence is derived from the site's salts, and there was no way
+to change it that did not also destroy everything it protected.
+
+#### Added
+
+**A rotation with a dual-key window** (`SecretRotator`, `Encryptor`). Three
+steps, not one button:
+
+1. **Start** — the current install salt is retired but kept, and a new one
+   minted. Both decrypt from this moment.
+2. **Move secrets** — a bounded sweep rewrites stored ciphertext under the
+   new key, resumable and re-runnable.
+3. **Finish** — the retired salt is deleted, and only now does the old key
+   material become worthless.
+
+It cannot be one step. The sweep is bounded so it cannot time out part-way
+through an install with many integrations, and step 3 is the only
+irreversible one — an operator who has just had their salts leaked needs to
+see what moved before the old key stops working.
+
+`POST /system/encryption/rotation`, `/sweep` and `/finish`, all behind
+`manage_settings`, all audited as three separate records because "started"
+and "finished" can be days apart and the gap *is* the window.
+
+#### The refusals are the feature
+
+- **Finishing is refused while any secret is still readable only by the old
+  key**, and the response names them. This is the failure an operator cannot
+  undo and would not notice for weeks — a sync quietly breaking long after
+  the rotation was declared a success.
+- **A second rotation is refused while one is open.** Two salts is all that
+  is held; a third would push the oldest off the end and strand everything
+  not yet rewritten, permanently and silently.
+- **An unreadable secret is counted and left alone**, never deleted. It is
+  already lost; the row is the only remaining evidence that something was
+  configured there, which is what tells the operator what to paste back in.
+  It does not block finishing, because waiting for something nobody can
+  rewrite would trap them in a rotation they can never close.
+
+#### Two things found while building it
+
+- **The fallback had to cover `v1` too.** The legacy derivation takes the
+  per-install salt as its HKDF *salt*, so rotating strands v1 ciphertext
+  exactly as it strands v2. Easy to miss, because the version prefix makes
+  it look like a separate path the new salt does not touch. There is a test,
+  and removing the v1 fallback fails it and nothing else.
+- **`FootprintTest` caught the new option.** `hiveclerk_encryption_salt_previous`
+  was not in the uninstall list. Left behind, it is a working key to
+  ciphertext the site believes it deleted — during a rotation, the *live*
+  key. Caught by a test written two sprints ago, not by me.
+
+#### A test for the failure that has not happened yet
+
+`SecretStoreCoverageTest` reads `src/` for calls to `encrypt()` and fails
+when one appears that rotation does not know about.
+
+The failure it prevents is quiet and delayed. Add a store that encrypts and
+everything works — it writes, reads back, survives a rotation's window
+because the old key still decrypts — and then breaks at the moment the
+operator closes the rotation, the one action framed as "you are now safe".
+It breaks by reading as "not configured", so it looks like the customer
+never set it up rather than like the plugin destroyed it. Nothing else
+catches that: the rotator's own tests only know the stores it already walks.
+
+Verified by adding a probe store that encrypts an SMTP token; the test named
+the file. Both directions are checked, so the list cannot rot into a claim
+about stores that no longer exist.
+
+#### Verified
+
+Falsified before trusted, then run for real:
+
+| Broke | Failed |
+|---|---|
+| No fallback to the retired salt | 3 of 16 Encryptor tests |
+| Fallback applied to v2 but not v1 | exactly the legacy test |
+| A new store encrypting, unknown to rotation | the coverage test, by filename |
+
+End to end against the development site, twice — with the provider key
+backed up first and fingerprinted:
+
+- `begin` → 200, one secret outstanding; a second `begin` → **409**.
+- `finish` before sweeping → **409**, naming `Provider key: google`.
+- `sweep` → rewrote 1, 0 remaining, 0 unreadable.
+- `finish` → 200.
+- Plaintext fingerprint `a4b698ada585c2a7` **before and after**. The key was
+  also upgraded `v1:` → `v2:` on the way through.
+- The salt changed, the retired salt was deleted, and **the old ciphertext no
+  longer decrypts** — which is the entire point.
+- Three audit records written. The provider still reports as configured.
+
+Also: 725 unit (up 18) + 43 integration, PHPStan L8 clean, `SEC-04` passing,
+58 front-end tests, and the new card audits clean for WCAG A/AA in both
+themes. Both themes screenshotted, idle and mid-rotation.
+
+#### Not delivered
+
+- **No background job.** The sweep is bounded at 50 and driven from the
+  screen, because an operator watching a rotation wants to see progress more
+  than they want it to happen unattended. An install with hundreds of
+  integrations will need several presses of "Move secrets". If that turns
+  out to be real rather than theoretical, it becomes a job.
+- **No automatic or scheduled rotation.** Operator-initiated only.
+- **No WP-CLI command.** A site whose admin is unreachable cannot rotate.
+
+#### Known gaps
+
+- On first load of a rotation in progress the screen shows a *count* of
+  outstanding secrets, not their names — the labels arrive only with a
+  mutation response. Harmless, and worth fixing.
+- The sweep and the finish check both walk every store, so a large install
+  reads all secrets more than once per press. Fine at the sizes this is
+  built for, not free at scale.
+- Rotation was exercised against one provider key on a site with no
+  integrations configured. The integration path is covered by unit tests
+  with an in-memory repository, not against a real connected account.
+- Nothing tests the screen itself; the card was verified by hand.
+
 ### The accessibility claim was false on every screen, in both themes
 
 **Goal:** the Phase 6 accessibility audit. The Definition of Done has asked

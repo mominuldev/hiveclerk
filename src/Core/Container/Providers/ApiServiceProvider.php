@@ -28,6 +28,7 @@ use Hiveclerk\Core\Licence\LicenceClient;
 use Hiveclerk\Core\Licence\LicenceGate;
 use Hiveclerk\Core\Licence\LicenceService;
 use Hiveclerk\Core\Privacy\PrivacySettings;
+use Hiveclerk\Core\Security\SecretRotator;
 use Hiveclerk\Core\Settings\SettingsRepository;
 use Hiveclerk\Core\Queue\QueueInterface;
 use Hiveclerk\Domain\Audit\AuditRepositoryInterface;
@@ -43,6 +44,7 @@ use Hiveclerk\Database\Migrator;
 use Hiveclerk\Database\ServerInfo;
 use Hiveclerk\Domain\Agent\AgentRepositoryInterface;
 use Hiveclerk\Domain\Conversation\ConversationRepositoryInterface;
+use Hiveclerk\Domain\Integration\IntegrationRepositoryInterface;
 use Hiveclerk\Domain\Knowledge\ChunkQuotaInterface;
 use Hiveclerk\Domain\Knowledge\KnowledgeSourceRepositoryInterface;
 
@@ -61,6 +63,14 @@ final class ApiServiceProvider extends ServiceProvider {
 		$container->singleton(
 			Encryptor::class,
 			static fn (): Encryptor => new Encryptor()
+		);
+
+		$container->singleton(
+			SecretRotator::class,
+			static fn ( Container $c ): SecretRotator => new SecretRotator(
+				$c->get( Encryptor::class ),
+				$c->get( IntegrationRepositoryInterface::class )
+			)
 		);
 
 		$container->singleton(
@@ -148,7 +158,9 @@ final class ApiServiceProvider extends ServiceProvider {
 				$c->get( KnowledgeSourceRepositoryInterface::class ),
 				$c->get( QueueInterface::class ),
 				$c->get( ServerInfo::class ),
-				$c->get( KeyResolver::class )
+				$c->get( KeyResolver::class ),
+				$c->get( SecretRotator::class ),
+				$c->get( AuditLogger::class )
 			)
 		);
 

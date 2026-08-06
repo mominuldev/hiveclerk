@@ -43,7 +43,16 @@ use SensitiveParameter;
  */
 final class KeyResolver {
 
-	private const OPTION = 'hiveclerk_provider_keys';
+	/**
+	 * Where provider keys live.
+	 *
+	 * Public because {@see \Hiveclerk\Core\Security\SecretRotator} has to
+	 * name every store holding ciphertext, and a rotation that missed one
+	 * would leave those secrets readable only by the key it just retired.
+	 * A duplicated string literal there is a store that silently stops
+	 * being rotated the day this one is renamed.
+	 */
+	public const OPTION = 'hiveclerk_provider_keys';
 
 	/**
 	 * Cached option contents for this request.

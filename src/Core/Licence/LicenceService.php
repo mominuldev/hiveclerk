@@ -49,7 +49,13 @@ final class LicenceService {
 	/**
 	 * Where the encrypted key lives.
 	 */
-	private const KEY_OPTION = 'hiveclerk_licence_key';
+	/**
+	 * Where the licence key lives, encrypted.
+	 *
+	 * Public for the same reason as {@see \Hiveclerk\Ai\KeyResolver::OPTION}:
+	 * the rotation sweep has to name it.
+	 */
+	public const KEY_OPTION = 'hiveclerk_licence_key';
 
 	/**
 	 * Where the last known state lives.

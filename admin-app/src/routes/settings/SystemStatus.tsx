@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorNotice } from '@/components/ui/ErrorNotice';
 import { useSystemHealth } from '@/api/queries/useSystemStatus';
 import { cn } from '@/lib/cn';
+import { KeyRotation } from './KeyRotation';
 
 /**
  * System status (FR-SYS-07).
@@ -256,6 +257,8 @@ export function SystemStatus() {
           </>
         )}
       </Card>
+
+      <KeyRotation health={data} />
     </div>
   );
 }

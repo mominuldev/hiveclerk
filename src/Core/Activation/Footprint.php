@@ -70,6 +70,13 @@ final class Footprint {
 			 */
 			'hiveclerk_provider_keys',
 			'hiveclerk_encryption_salt',
+			/*
+			 * Present only while a key rotation is open, and the whole point
+			 * of it is that it still decrypts live secrets — so an uninstall
+			 * during a rotation has to take it too. Left behind, it is a
+			 * working key to ciphertext the site thinks it deleted.
+			 */
+			'hiveclerk_encryption_salt_previous',
 			'hiveclerk_session_salt',
 
 			// Licensing.
