@@ -56,6 +56,7 @@ interface EmbeddingProviderInterface {
 	 * @param array<int, string> $texts      Inputs, in order.
 	 * @param string            $model       Model identifier.
 	 * @param int               $timeout     Seconds.
+	 * @param EmbeddingTask     $task        What the vectors will be used for.
 	 * @return EmbeddingBatch
 	 *
 	 * @throws ProviderException When the call fails or the batch is short.
@@ -64,6 +65,7 @@ interface EmbeddingProviderInterface {
 		Credentials $credentials,
 		array $texts,
 		string $model,
-		int $timeout = 60
+		int $timeout = 60,
+		EmbeddingTask $task = EmbeddingTask::Document
 	): EmbeddingBatch;
 }

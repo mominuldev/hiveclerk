@@ -6,6 +6,86 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Questions were being embedded as answers
+
+**Goal:** improve retrieval accuracy. What was found instead was a defect
+that every previous retrieval number in this file was measured through.
+
+#### The defect, and the comment that described it
+
+Gemini's embeddings are asymmetric: `RETRIEVAL_DOCUMENT` and
+`RETRIEVAL_QUERY` place a passage and the question it answers in
+deliberately different regions of the same space, and the model needs to
+be told which side an input is on. `GoogleProvider::embed()` hardcoded
+`RETRIEVAL_DOCUMENT` for every input — above a comment explaining that
+"using the document task type for both costs measurable recall". The
+comment was describing the code below it. There was no way to say "this
+is a question": the embedding interface had no parameter for it, so
+`EmbeddingService::embedQuery()` sent every visitor question down the
+document path.
+
+`EmbeddingTask` (an enum: `Document`, `Query`) now travels from
+`embedQuery()` through `AiService` and the provider interface to the
+adapter. The Google adapter maps it to the task type; the OpenAI-shaped
+adapters accept and ignore it, because those models are symmetric and
+have no distinction to express. The query-vector cache key includes the
+task, so a vector cached before the fix cannot serve after it.
+
+#### Measured — same index, same 54 questions, only the query side changed
+
+| Corpus | recall@5 before | after | MRR before | after |
+|---|---|---|---|---|
+| Sub-headed, 62 chunks | 0.944 | **1.000** | 0.831 | **0.867** |
+| Flat prose, 24 chunks | 0.926 | **0.944** | 0.821 | **0.826** |
+
+The document vectors did not move — they were already embedded with the
+correct task type — so the structured-corpus delta is attributable to the
+query fix alone. All three questions that survived every previous tuning
+round are recovered, including the gift return asked entirely in
+pronouns. The flat corpus now scores what the structured corpus scored
+before the fix; its three remaining misses have best cosines of
+0.61–0.66, which is coverage, not ranking, and no retrieval constant will
+reach them.
+
+Because the fix is query-side only, **it reaches every existing install
+immediately** — no re-embedding, no re-index, no operator action. That is
+the mirror image of the chunker entry below, whose fix reaches existing
+installs only as their content changes.
+
+Also closed from the entry below: **the structured corpus was re-measured
+end to end** — re-seeded, re-ingested and re-embedded after the quota
+reset — so its number is a measurement again rather than a byte-identity
+argument, and the dev site's eval source is back to `ready` with 62
+embedded chunks instead of the error state the entry below leaves it in.
+
+#### Verified
+
+- Three new unit tests pin the wire format: chunks embed as
+  `RETRIEVAL_DOCUMENT`, queries as `RETRIEVAL_QUERY`, and every request
+  in a batch carries the task. The failure mode is silent — a query
+  embedded as a document returns vectors, similarities and confident
+  rankings, all measurably worse and none of them an error — so the
+  request body is asserted, not the outcome.
+- PHPCS, PHPStan L8, domain purity — clean. **581 unit tests**, 2,154
+  assertions, 3 new.
+- Both eval runs cost 54 embedding calls each, roughly $0.0002.
+
+#### Known gaps
+
+- **The keyword weight of 0.2 was fitted against mis-embedded queries.**
+  The sweep that chose it ran while every query was on the wrong side of
+  the asymmetry, and it was not redone. The current configuration beats
+  the floor with room to spare, but the constant's justification is now
+  weaker than its docblock claims, and a re-sweep might land somewhere
+  else.
+- **1.000 on 54 questions is a ceiling being hit, not perfection.** The
+  corpus is 207 chunks and the question set was authored alongside it;
+  the number says the eval set can no longer distinguish improvements,
+  which is an argument for growing the set, not for stopping.
+- **Sites embedding through OpenAI are unaffected** — their models are
+  symmetric — so this improvement is provider-specific and nothing here
+  measured whether their recall has a comparable gap.
+
 ### The chunker had one size where it needed two
 
 **Goal:** fix the weakness the M1 measurement exposed. 0.944 was the number

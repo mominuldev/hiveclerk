@@ -14,6 +14,7 @@ use Hiveclerk\Ai\Completion;
 use Hiveclerk\Ai\CompletionRequest;
 use Hiveclerk\Ai\EmbeddingBatch;
 use Hiveclerk\Ai\EmbeddingModel;
+use Hiveclerk\Ai\EmbeddingTask;
 use Hiveclerk\Ai\ProviderException;
 use Hiveclerk\Ai\StreamEvent;
 use Hiveclerk\Domain\Usage\UsageKind;
@@ -120,7 +121,12 @@ final class FakeAiService implements AiServiceInterface {
 		);
 	}
 
-	public function embed( EmbeddingModel $pin, array $texts, int $timeout = 60 ): EmbeddingBatch {
+	public function embed(
+		EmbeddingModel $pin,
+		array $texts,
+		int $timeout = 60,
+		EmbeddingTask $task = EmbeddingTask::Document
+	): EmbeddingBatch {
 		throw new ProviderException( 'The fake does not embed.', $pin->provider );
 	}
 }

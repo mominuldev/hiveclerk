@@ -81,9 +81,15 @@ interface AiServiceInterface {
 	 * @param EmbeddingModel     $pin     Pinned provider and model.
 	 * @param array<int, string> $texts   Inputs, in order.
 	 * @param int                $timeout Seconds.
+	 * @param EmbeddingTask      $task    What the vectors will be used for.
 	 * @return EmbeddingBatch
 	 *
 	 * @throws ProviderException When the provider cannot embed or the call fails.
 	 */
-	public function embed( EmbeddingModel $pin, array $texts, int $timeout = 60 ): EmbeddingBatch;
+	public function embed(
+		EmbeddingModel $pin,
+		array $texts,
+		int $timeout = 60,
+		EmbeddingTask $task = EmbeddingTask::Document
+	): EmbeddingBatch;
 }

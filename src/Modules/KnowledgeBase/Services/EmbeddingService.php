@@ -12,6 +12,7 @@ namespace Hiveclerk\Modules\KnowledgeBase\Services;
 use Hiveclerk\Ai\AiService;
 use Hiveclerk\Ai\EmbeddingBatch;
 use Hiveclerk\Ai\EmbeddingModel;
+use Hiveclerk\Ai\EmbeddingTask;
 use Hiveclerk\Ai\ProviderException;
 use Hiveclerk\Ai\ProviderId;
 use Hiveclerk\Core\Settings\SettingsRepository;
@@ -197,7 +198,12 @@ final class EmbeddingService {
 			return new Embedding( array(), $pin->provider, $pin->model );
 		}
 
-		$key = self::QUERY_CACHE_PREFIX . md5( $pin->provider . '|' . $pin->model . '|' . $text );
+		// The task type is part of the key: a query vector and a document
+		// vector of the same text are different vectors on an asymmetric
+		// model, and serving one as the other is a silent recall loss.
+		$key = self::QUERY_CACHE_PREFIX . md5(
+			$pin->provider . '|' . $pin->model . '|' . EmbeddingTask::Query->value . '|' . $text
+		);
 
 		if ( $cache ) {
 			$cached = get_transient( $key );
@@ -211,7 +217,7 @@ final class EmbeddingService {
 			}
 		}
 
-		$batch  = $this->ai->embed( $pin, array( $text ) );
+		$batch  = $this->ai->embed( $pin, array( $text ), 60, EmbeddingTask::Query );
 		$vector = $batch->at( 0 );
 
 		if ( null === $vector ) {

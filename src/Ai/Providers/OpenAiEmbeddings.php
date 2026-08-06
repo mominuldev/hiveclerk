@@ -11,6 +11,7 @@ namespace Hiveclerk\Ai\Providers;
 
 use Hiveclerk\Ai\Credentials;
 use Hiveclerk\Ai\EmbeddingBatch;
+use Hiveclerk\Ai\EmbeddingTask;
 use Hiveclerk\Ai\ProviderException;
 
 /**
@@ -41,10 +42,14 @@ trait OpenAiEmbeddings {
 	/**
 	 * Embed a batch.
 	 *
+	 * The task is accepted and unused: OpenAI's embedding models are
+	 * symmetric, with no distinction to express in the request.
+	 *
 	 * @param Credentials        $credentials Credentials.
 	 * @param array<int, string> $texts       Inputs, in order.
 	 * @param string             $model       Model identifier.
 	 * @param int                $timeout     Seconds.
+	 * @param EmbeddingTask      $task        What the vectors will be used for.
 	 * @return EmbeddingBatch
 	 *
 	 * @throws ProviderException When the call fails or the batch is short.
@@ -53,7 +58,8 @@ trait OpenAiEmbeddings {
 		Credentials $credentials,
 		array $texts,
 		string $model,
-		int $timeout = 60
+		int $timeout = 60,
+		EmbeddingTask $task = EmbeddingTask::Document
 	): EmbeddingBatch {
 		$this->assertConfigured( $credentials );
 

@@ -14,6 +14,7 @@ use Hiveclerk\Ai\CompletionRequest;
 use Hiveclerk\Ai\Credentials;
 use Hiveclerk\Ai\EmbeddingBatch;
 use Hiveclerk\Ai\EmbeddingProviderInterface;
+use Hiveclerk\Ai\EmbeddingTask;
 use Hiveclerk\Ai\Model;
 use Hiveclerk\Ai\ProviderCapabilities;
 use Hiveclerk\Ai\ProviderException;
@@ -192,6 +193,7 @@ final class GoogleProvider extends AbstractProvider implements EmbeddingProvider
 	 * @param array<int, string> $texts       Inputs, in order.
 	 * @param string             $model       Model identifier.
 	 * @param int                $timeout     Seconds.
+	 * @param EmbeddingTask      $task        What the vectors will be used for.
 	 * @return EmbeddingBatch
 	 *
 	 * @throws ProviderException When the call fails or the batch is short.
@@ -200,7 +202,8 @@ final class GoogleProvider extends AbstractProvider implements EmbeddingProvider
 		Credentials $credentials,
 		array $texts,
 		string $model,
-		int $timeout = 60
+		int $timeout = 60,
+		EmbeddingTask $task = EmbeddingTask::Document
 	): EmbeddingBatch {
 		$this->assertConfigured( $credentials );
 
@@ -225,7 +228,7 @@ final class GoogleProvider extends AbstractProvider implements EmbeddingProvider
 				// embeds a document and a question differently, and using
 				// the document task type for both costs measurable recall
 				// for no saving.
-				'taskType' => 'RETRIEVAL_DOCUMENT',
+				'taskType' => EmbeddingTask::Query === $task ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT',
 			);
 
 			if ( null !== $width ) {

@@ -110,9 +110,13 @@ final class RetrievalService implements RetrievalServiceInterface {
 	 * (0.870 / 0.615) on both measures, which is the outcome hybrid search
 	 * is supposed to produce and previously did not.
 	 *
-	 * **This does not reach the M1 floor of 0.90.** 48 of 54 is short by one
-	 * question. The gate is still failing; it is failing by less, for a
-	 * reason that is understood.
+	 * The sweep that chose this value ran while every query was embedded
+	 * with the document task type — the defect EmbeddingTask fixed — so
+	 * both arms were measured against weaker vectors than the ones now in
+	 * play. The configuration clears the M1 floor with the fix in place
+	 * (1.000 on the structured corpus, 0.944 flat), but the constant has
+	 * not been re-swept against correctly-embedded queries and a re-sweep
+	 * might land somewhere else.
 	 */
 	private const KEYWORD_WEIGHT = 0.2;
 
