@@ -25,7 +25,7 @@ const NAV = [
   { to: '/email', label: 'Email', icon: Mail },
   { to: '/knowledge', label: 'Knowledge', icon: BookOpen },
   { to: '/integrations', label: 'Integrations', icon: Plug },
-  { to: '/workflows', label: 'Workflows', icon: Workflow, badge: 'V2' },
+  { to: '/workflows', label: 'Workflows', icon: Workflow },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
@@ -52,7 +52,7 @@ export function Sidebar({ clerks, onHire }: SidebarProps) {
 
       <nav aria-label="Sections" className="px-2.5 pt-3">
         <ul className="space-y-0.5">
-          {NAV.map(({ to, label, icon: Icon, ...rest }) => (
+          {NAV.map(({ to, label, icon: Icon }) => (
             <li key={to}>
               <NavLink
                 to={to}
@@ -86,11 +86,6 @@ export function Sidebar({ clerks, onHire }: SidebarProps) {
                       )}
                     />
                     <span className="flex-1">{label}</span>
-                    {'badge' in rest && rest.badge && (
-                      <span className="rounded-full border border-border px-1.5 py-px text-[10px] font-semibold tracking-wide text-content-tertiary">
-                        {rest.badge}
-                      </span>
-                    )}
                   </>
                 )}
               </NavLink>

@@ -57,6 +57,7 @@ final class Footprint {
 			'hiveclerk_db_version',
 			'hiveclerk_installed_at',
 			'hiveclerk_needs_migration',
+			'hiveclerk_caps_version',
 			'hiveclerk_onboarding',
 
 			/*

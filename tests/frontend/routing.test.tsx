@@ -110,6 +110,18 @@ describe('the shell around the routes', () => {
     expect(screen.getByRole('navigation', { name: 'Sections' })).toBeInTheDocument();
   });
 
+  it('keeps the workflow builder and its activity screen apart', async () => {
+    // Two routes under one :uuid, and the specific failure is silent:
+    // declared in the wrong order, `/workflows/<id>/runs` matches the
+    // builder with "runs" swallowed as part of the id, and the operator
+    // gets a workflow that does not exist rather than the activity log.
+    await visit('/workflows/2f1c8a90-0000-4000-8000-000000000000/runs');
+
+    expect(window.location.hash).toBe(
+      '#/workflows/2f1c8a90-0000-4000-8000-000000000000/runs'
+    );
+  });
+
   it('renders the full-screen sequence builder outside the shell', async () => {
     await visit('/email/sequences/2f1c8a90-0000-4000-8000-000000000000');
 

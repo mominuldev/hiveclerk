@@ -478,27 +478,60 @@ Locked tier features show what they do and where to get them — never a dead di
 
 ---
 
-## 9. Workflows (V2 placeholder)
+## 9. Workflows
+
+Built ahead of its V2 slot. Three screens: the list with templates, the
+builder, and the activity log.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  Workflows                                                                           │
+│  Workflows                                                     [ + New workflow ]    │
 │                                                                                      │
-│                              ┌───────────────────────┐                               │
-│                              │  ⬢                    │                               │
-│                              └───────────────────────┘                               │
+│  Chase a qualified lead                    Active     12 finished · 3 in progress    │
+│  A lead becomes qualified · 4 steps                                                  │
+│  ─────────────────────────────────────────────────────────────────────────────────   │
+│  Revive quiet leads                        Draft      Nobody has been through yet    │
+│  On a schedule · 2 steps                                                             │
 │                                                                                      │
-│                        Workflows arrive in version 2.0                               │
-│                                                                                      │
-│         Chain triggers, conditions and actions — recover carts, escalate              │
-│         angry conversations, nurture leads without writing code.                     │
-│                                                                                      │
-│              [ Tell us what you'd automate ]   [ See the roadmap → ]                 │
-│                                                                                      │
+│  Templates — each arrives as a draft, with the site-specific decisions left to you    │
+│  ┌────────────────────────────┐  ┌────────────────────────────┐                      │
+│  │ ⬢ Chase a qualified lead   │  │ ⬢ Alert on a handoff       │                      │
+│  │   [ Use this ]             │  │   [ Use this ]             │                      │
+│  └────────────────────────────┘  └────────────────────────────┘                      │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The V2 stub collects demand rather than showing a dead menu item.
+The builder is a tree, not a free canvas. A workflow starts at one trigger,
+runs downward and forks only at conditions — which is a tree, and a tree
+renders as nested columns with no layout engine, reads top to bottom like
+the thing it describes, and is reachable with Tab because every part of it
+is a button. A pannable canvas of draggable boxes photographs better and
+fails the keyboard requirement this product holds every screen to.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│  ← All workflows                        Active   [ Activity ] [ Test ] [ Pause ]     │
+│                                                                                      │
+│  ⚡ WHEN  A lead becomes qualified                                                    │
+│  │                                                                                    │
+│  ⬡ Wait 1 hour                                                          [ 🗑 ]        │
+│  │                                                                                    │
+│  ⬔ If score is more than 60                                             [ 🗑 ]        │
+│  ├── Yes ──────────────────────────┐  ┌── No ───────────────────────────┐            │
+│  │  ⬢ Start an email sequence      │  │  ⬢ Add a note to the timeline   │            │
+│  │  Then [ Do something ][ Check ] │  │  Nothing here — the workflow    │            │
+│  └────────────────────────────────┘  │  ends for anyone on this branch │            │
+│                                       └─────────────────────────────────┘            │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Not ready to activate is a list, and each reason also appears on the card of
+the step it is about. An operator should never hunt through nine steps for
+the one that is wrong.
+
+Test is a dry run: conditions evaluated against a real lead, actions
+described and not performed, and the panel says so every time. A builder
+nobody dares test is a builder whose first real run is the test.
 
 ---
 

@@ -201,9 +201,12 @@ must not inject as HTML.
   `RateLimiter` (SEC-03 cost exhaustion is cheaper to execute than a DoS and
   hurts more).
 
-**Capabilities** — seven custom ones in `Capabilities.php`, mapped to roles on
-activation. `shop_manager` gets operational access but never `manage_settings`,
-which holds the API key.
+**Capabilities** — eight custom ones in `Capabilities.php`, mapped to roles on
+activation *and re-granted by `CapabilityManager::syncIfStale()` when the map
+changes*, because an upgraded site never re-runs activation. `shop_manager`
+gets operational access but never `manage_settings`, which holds the API key,
+and never `manage_workflows`, which is a superset of three outbound
+capabilities it is otherwise denied.
 
 **Secrets** — AES-256-GCM at rest via `Encryptor`, key derived from WordPress
 salts plus a per-install salt held separately. Keys never leave the server: the

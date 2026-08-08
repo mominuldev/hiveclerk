@@ -26,6 +26,7 @@ enum Feature: string {
 
 	case Crm            = 'crm';
 	case EmailSequences = 'email_sequences';
+	case Workflows      = 'workflows';
 	case RemoveBadge    = 'remove_badge';
 	case WhiteLabel     = 'white_label';
 	case Multisite      = 'multisite';
@@ -39,6 +40,7 @@ enum Feature: string {
 		return match ( $this ) {
 			self::Crm            => 'CRM sync',
 			self::EmailSequences => 'Email sequences',
+			self::Workflows      => 'Workflows',
 			self::RemoveBadge    => 'Removing the badge',
 			self::WhiteLabel     => 'White-label mode',
 			self::Multisite      => 'Multisite',
@@ -56,7 +58,7 @@ enum Feature: string {
 	 */
 	public function requires(): Tier {
 		return match ( $this ) {
-			self::Crm, self::EmailSequences, self::RemoveBadge => Tier::Pro,
+			self::Crm, self::EmailSequences, self::Workflows, self::RemoveBadge => Tier::Pro,
 			self::Multisite  => Tier::Business,
 			self::WhiteLabel => Tier::Agency,
 		};

@@ -6,6 +6,173 @@ All notable changes are documented here. Format follows
 
 ## [Unreleased]
 
+### Workflows: the V2 builder, brought forward
+
+**Goal:** the automation the roadmap had at V2.0-a — triggers, conditions,
+actions, delays, branching and scheduled runs — built on the domain events
+V1 already fires. The architecture document claimed since Phase 2 that the
+event bus "lets the V2 workflow builder subscribe to everything without
+modifying existing modules". That claim is now exercised rather than
+asserted: **not one line changed in Leads, Chat, Email or Integrations.**
+Every trigger is an `add_action` on a hook that already existed.
+
+#### Added
+
+**A workflow is a trigger, a graph and a set of re-entry rules**
+(`src/Domain/Workflow/`). Five triggers — lead captured, lead qualified,
+stage changed, handoff requested, and a recurring schedule over a filtered
+lead segment. Seven actions, each delegating to the module that owns the
+behaviour rather than reimplementing it: enrol in a sequence, move stage,
+adjust score, add a note, push to CRM, send a webhook, email the team.
+
+**The engine runs in bounded batches and never in a request**
+(`WorkflowEngine`, `WorkflowTickJob`). A trigger writes a row and asks for a
+tick; it does not execute. The trigger for most workflows fires inside a
+visitor's request and the first node is quite often an HTTP call to a CRM —
+running it there would put a third party's latency inside a chat reply. A
+run then walks straight through conditions and actions in one pass and
+stops only on a wait, a failure, or the end.
+
+**Templates, because an empty automation canvas is the hardest screen in
+any product of this kind.** Four, each arriving as a draft with the
+site-specific decisions still to make, so opening one is a tour of the
+builder rather than something that silently starts emailing people.
+
+**A dry run** (`WorkflowSimulator`, `POST /admin/workflows/{uuid}/test`).
+Conditions are evaluated against a real lead for real; actions are described
+and not performed, and the panel says so every time. The question an
+operator has is not "what would this do to somebody" but "what would this do
+to *them*", and it does not extend to "would you mind emailing them to find
+out".
+
+**A per-step activity log** recording the value each condition actually
+compared. "Score is more than 60 → No" tells an operator nothing they did
+not already fear; "Score was 45 → No" ends the investigation. Kept 90 days,
+pruned from the tick, and the screen says so rather than letting anyone
+conclude the older runs were never recorded.
+
+#### Decisions worth recording
+
+- **Cycles are refused at the door, not bounded at runtime.** A step limit
+  would also stop an infinite loop — after it had sent forty emails. A graph
+  that can reach the same node twice fails validation with the node named.
+  `WorkflowRun::MAX_STEPS` still exists as a backstop, because a rule
+  enforced in one place is a rule until somebody writes a second door.
+- **Three separate guards against a lead going round twice.** Re-entry is
+  refused by a unique index on `(workflow_id, open_key)` rather than by a
+  read-then-write, because two events in the same second from two requests
+  would both find no open run. `runs_once` defaults to on, so a lead whose
+  stage changes four times in an afternoon goes through once. And the router
+  drops events fired *while an action is executing*, which is what stops two
+  workflows triggering each other for ever.
+- **The builder is a tree, not a free canvas.** The obvious build — pannable
+  canvas, draggable boxes, drawn connectors — photographs better and fails
+  two requirements this product holds every screen to: it is not keyboard
+  reachable in any honest sense, and it needs a graph-layout library costing
+  more of the bundle than the whole feature. A workflow is not an arbitrary
+  graph: one trigger, downward, forking only at conditions. That is a tree.
+- **Workflows get their own capability rather than reusing `manage_leads`.**
+  A workflow can reach a CRM, a webhook endpoint and a mailing list — every
+  outbound capability the role map deliberately withholds from a shop
+  manager, reachable by building a graph. Gating the builder on
+  `manage_leads` would have been a way *around* the `manage_integrations`
+  gate rather than a separate feature. `hiveclerk_manage_workflows` is
+  administrator-only.
+- **The webhook action has no URL field, and that is the point.** A URL
+  typed into a workflow is a URL the server will fetch, and
+  `169.254.169.254` returns cloud instance credentials to anything that
+  asks. The action names an event and the endpoints already configured under
+  Integrations receive it — where private-range rejection, signing and the
+  retry policy already live. The event is prefixed `workflow.` so an
+  automation cannot impersonate `lead.captured` to a downstream system.
+- **Email goes through enrolment, never through a send.** Everything that
+  makes follow-up safe here — suppression list, unsubscribe link, hourly
+  ceiling, exit on reply — lives behind `EnrolmentService::enrol()`. An
+  action that sent its own mail would have none of it, and the first person
+  to notice would be a recipient who had already unsubscribed.
+- **The context is rebuilt at every step, not carried from the trigger.**
+  After a two-day wait, "is the score still under 40" has to be asking about
+  today. What the trigger saw is kept under `trigger.` keys so a graph can
+  compare then with now; it is just not what a bare field name means.
+- **Graph input is rebuilt from an allowlist, not sanitized in place.** The
+  graph is a JSON column, and a JSON column is read back by code that builds
+  email bodies and HTTP payloads out of it. `GraphSanitizer` keeps only the
+  config keys the node type actually owns; a `recipients` field on a stage
+  action is dropped rather than left waiting for a future version to trust it.
+
+#### Fixed
+
+**Capabilities were granted on activation and never again** — correct
+exactly once. A capability added in any later release reached only the sites
+that happened to deactivate and reactivate; every upgraded site would have
+had the screen, the routes, and no role holding the capability that opens
+them, which presents as a 403 to the administrator who just paid for the
+feature. `CapabilityManager::syncIfStale()` now compares one integer against
+an autoloaded option on `admin_init` and re-grants when the role map has
+changed. Found while adding `manage_workflows`; it would have bitten every
+future capability too.
+
+#### Verified
+
+- **784 unit tests pass** (4,407 assertions), 56 of them new across graph
+  validation, condition evaluation, the engine, the trigger router and the
+  input sanitizer. PHPStan L8, PHPCS, `tsc --noEmit` all clean.
+- **Migration 13 applied to a live install**: three tables created, schema
+  version 13, capability sync ran on an already-activated site and granted
+  `manage_workflows` to administrators and — correctly — not to
+  `shop_manager`.
+- **End to end on that install**: a workflow with a condition, an action and
+  a wait was created, activated, triggered by a real lead capture and
+  ticked. The condition logged `Score was 42, needed is more than 10 → Yes`,
+  the note appeared on the lead's timeline, and the run parked on the wait
+  at the right node with the right resume time. Trigger cost 40 ms; one tick
+  advancing one run took 322 ms, both including cold container resolution.
+- **`tools/verify-routes.php` passes** with all seven workflow routes
+  registered and capability-gated (SEC-04).
+- **Admin bundle 188.85 KB gzipped** against a 350 KB budget — the whole
+  feature added no dependency. Widget unchanged at 17.23 KB.
+- **`/workflows` passes the WCAG 2.1 A/AA markup audit** in the a11y suite,
+  and the routing test now asserts the builder and its activity screen stay
+  distinct under one `:uuid`.
+
+#### Not delivered
+
+- **No WooCommerce trigger and no multi-agent action.** Both were in the
+  same V2 milestone and neither module exists; a trigger the platform cannot
+  observe is a promise the builder screen makes and the engine never keeps.
+- **No graph versioning.** Editing a live workflow re-points open runs at
+  the current graph by node id, and a run parked on a step that has since
+  been deleted stops with a line saying so. Pinning every run to the version
+  it started under is right for a mature product and wrong for a first
+  release: it makes every edit a fork, and an operator fixing a typo would
+  be watching two versions run side by side with no screen showing both.
+- **No per-workflow analytics beyond run counts.** Conversion attribution
+  belongs with the Analytics module's rollups, not bolted onto this one.
+
+#### Known gaps
+
+- **Only unit-tested, plus the one live end-to-end probe above.** There is
+  no integration test that drives a workflow through the real repositories
+  across several ticks. The re-entry guard in particular is enforced by a
+  unique index in production and by an explicit check in the in-memory fake
+  — those agree today because the fake was written to model it, and nothing
+  fails if they stop agreeing.
+- **The scheduled sweep takes the newest 100 matching leads per interval and
+  does not page.** A segment larger than that is worked through over
+  successive intervals in an order nobody has specified. Deliberate for now
+  — the alternative shape opens forty thousand runs in one tick — but it is
+  a ceiling nothing tells the operator about on screen.
+- **A run's `attempts` counter is per node and resets on every move**, so a
+  workflow that fails at three different steps retries three times each. The
+  cap is per step by design, but a graph engineered to fail repeatedly has no
+  global ceiling below `MAX_STEPS`.
+- **`ContextBuilder` issues one lead lookup per step.** Against a primary
+  key, inside a job that already writes a log row per step, so it has not
+  been worth caching — but it has not been measured under a backlog of
+  thousands of due runs either.
+- **The dead `Placeholder` route component was deleted** with the V2 stub it
+  served. Nothing else referenced it.
+
 ### The encryption key can be rotated, which it could not be before
 
 **Goal:** Phase 6's last item. Until now a customer whose `wp-config.php`

@@ -15,6 +15,43 @@ namespace Hiveclerk\Core\Capabilities;
 final class CapabilityManager {
 
 	/**
+	 * Bumped whenever {@see Capabilities::roleMap()} changes.
+	 */
+	public const VERSION = 2;
+
+	/**
+	 * Where the last granted version is remembered.
+	 */
+	private const OPTION = 'hiveclerk_caps_version';
+
+	/**
+	 * Re-grant when the role map has changed since the last grant.
+	 *
+	 * Capabilities used to be written on activation and never again, which
+	 * is correct exactly once. A capability added in a later release then
+	 * reached only the sites that happened to deactivate and reactivate —
+	 * every upgraded site had the new screen, the new routes and no role
+	 * holding the capability that opens them, so the feature answered 403
+	 * to the administrator who had just paid for it.
+	 *
+	 * One integer comparison against an autoloaded option on `admin_init`,
+	 * and the write happens on the release that changes the map.
+	 *
+	 * @return bool Whether anything was granted.
+	 */
+	public static function syncIfStale(): bool {
+		if ( (int) get_option( self::OPTION, 0 ) >= self::VERSION ) {
+			return false;
+		}
+
+		self::grant();
+
+		update_option( self::OPTION, self::VERSION, true );
+
+		return true;
+	}
+
+	/**
 	 * Grant capabilities to their default roles.
 	 *
 	 * @return void

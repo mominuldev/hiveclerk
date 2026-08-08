@@ -84,7 +84,7 @@ Legend: **●** full · **◐** limited · **○** not included · **→** plann
 | Zoho / Salesforce | ○ | ○ | ● | ● | ● |
 | Outbound webhooks | ○ | ● | ● | ● | ● |
 | Slack notifications | ○ | ● | ● | ● | ● |
-| Visual workflow builder *(V2)* | ○ | → | → | → | → |
+| Visual workflow builder | ○ | ● | ● | ● | ● |
 
 ### A.6 Platform and Licensing
 
@@ -133,8 +133,8 @@ The free tier is limited by **scale**, never by **quality**. A free user gets re
 | Predictive lead scoring from outcomes | | | ● | |
 | **Automation** | | | | |
 | Email sequences | ● | | | |
-| Visual workflow builder (triggers/conditions/actions/delays/branching) | | | ● | |
-| Scheduled and recurring workflows | | | ● | |
+| Visual workflow builder (triggers/conditions/actions/delays/branching) | ● *(brought forward)* | | | |
+| Scheduled and recurring workflows | ● *(brought forward)* | | | |
 | **Commerce** | | | | |
 | WooCommerce product indexing | ● | | | |
 | Product recommendations | | | ● | |

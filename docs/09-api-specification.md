@@ -410,6 +410,28 @@ Score breakdown (FR-LED-04 — the transparency persona P3 requires):
 
 `/detect` scans for `sitemap.xml`, WooCommerce, public post types, and existing FAQ pages, returning suggested sources — the mechanism behind FR-ONB-04 and the 10-minute activation target.
 
+### 3.8 Workflows
+
+| Method | Route |
+|---|---|
+| `GET` `POST` | `/admin/workflows` |
+| `GET` | `/admin/workflows/vocabulary` |
+| `GET` `PATCH` `DELETE` | `/admin/workflows/{uuid}` |
+| `POST` | `/admin/workflows/{uuid}/activate` · `/pause` |
+| `POST` | `/admin/workflows/{uuid}/test` |
+| `GET` | `/admin/workflows/{uuid}/runs` |
+| `GET` | `/admin/workflows/runs/{id}` |
+
+Every route requires `hiveclerk_manage_workflows`, which only administrators hold by default — a workflow can reach a CRM, a webhook endpoint and a mailing list, so the builder is a superset of three capabilities the role map otherwise hands out separately (FR-WFL-08).
+
+`/vocabulary` returns triggers, actions, condition fields, operators, stages, sequences and placeholders in one response. The builder needs all of it before it can draw a single node, and five round trips on a screen with a spinner is how a fast product feels slow.
+
+`/activate` returns `422` with a `blockers` array naming each step that is not ready and why. The reason is the contract, not the status: "validation failed" sends an operator back to a screen with nine steps on it and no idea which one is wrong.
+
+`/test` is a dry run. Conditions are evaluated against the named lead for real; actions are described and not performed. The response carries `executed: false`.
+
+Writes are gated on the Workflows entitlement; reads are not. A site whose licence has lapsed can still see what its workflows did and why a lead received what it received.
+
 ---
 
 ## 4. Webhooks (outbound)
@@ -426,6 +448,7 @@ Configured under Integrations. Signed with `X-HVC-Signature: sha256=…` (HMAC o
 | `lead.stage_changed` | Pipeline stage moved |
 | `knowledge.sync_completed` | Source finished indexing |
 | `knowledge.gap_detected` | Query with no confident retrieval |
+| `workflow.{name}` | A workflow's webhook action fires; the `workflow.` prefix is not optional, so an automation cannot impersonate one of the events above |
 
 Retries: 5 attempts with exponential backoff (1 m, 5 m, 30 m, 2 h, 12 h). Non-2xx responses are logged to `integration_log`.
 

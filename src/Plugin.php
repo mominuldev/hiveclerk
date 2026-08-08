@@ -90,6 +90,7 @@ final class Plugin {
 		$this->container->register( new ApiServiceProvider() );
 
 		$this->registerMigrationHook();
+		$this->registerCapabilitySync();
 		$this->registerLicenceRefresh();
 
 		$this->container->get( RestServer::class )->boot();
@@ -124,6 +125,13 @@ final class Plugin {
 		// added; it depends on Knowledge and Agents, both long since
 		// bound.
 		$registry->add( new Modules\Onboarding\OnboardingModule() );
+		// Workflows last of all. It resolves services out of Leads, Email
+		// and Integrations and is called by none of them — it listens to
+		// the same domain events they already fire, and nothing was changed
+		// in any of them to make it work. That is the property the event
+		// bus was built for, now exercised rather than asserted. A site can
+		// filter this module out and every other one carries on unchanged.
+		$registry->add( new Modules\Workflows\WorkflowsModule() );
 
 		/**
 		 * Register feature modules.
@@ -221,6 +229,31 @@ final class Plugin {
 		// And before background work, which is the other path that runs for
 		// months without an administrator ever being present.
 		add_action( 'hiveclerk/jobs/register', $run, 1 );
+	}
+
+	/**
+	 * Grant any capability the role map has gained since the last release.
+	 *
+	 * Capabilities were written on activation and never again, which is
+	 * correct exactly once. A capability added in a later version then
+	 * reached only the sites that happened to deactivate and reactivate;
+	 * every upgraded site got the screen, the routes and no role holding
+	 * the capability that opens them — a feature that answers 403 to the
+	 * administrator who paid for it.
+	 *
+	 * Priority 6: after migrations, before anything that reads a
+	 * capability to decide what to show.
+	 *
+	 * @return void
+	 */
+	private function registerCapabilitySync(): void {
+		add_action(
+			'admin_init',
+			static function (): void {
+				Core\Capabilities\CapabilityManager::syncIfStale();
+			},
+			6
+		);
 	}
 
 	/**

@@ -41,6 +41,7 @@ const SCREENS = [
   '/knowledge/gaps',
   '/knowledge/playground',
   '/integrations/connectors',
+  '/workflows',
   '/analytics/overview',
   '/settings/providers',
   '/settings/privacy',

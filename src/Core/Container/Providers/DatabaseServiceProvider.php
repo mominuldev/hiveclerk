@@ -23,6 +23,7 @@ use Hiveclerk\Database\Migrations\M0009_ConversationSupervision;
 use Hiveclerk\Database\Migrations\M0010_LeadPipeline;
 use Hiveclerk\Database\Migrations\M0011_QualifiedLeadIndex;
 use Hiveclerk\Database\Migrations\M0012_UnknownCost;
+use Hiveclerk\Database\Migrations\M0013_Workflows;
 use Hiveclerk\Database\Repositories\ActivityRepository;
 use Hiveclerk\Database\Repositories\AnalyticsRepository;
 use Hiveclerk\Database\Repositories\AuditRepository;
@@ -42,6 +43,9 @@ use Hiveclerk\Database\Repositories\SequenceStepRepository;
 use Hiveclerk\Database\Repositories\SuppressionRepository;
 use Hiveclerk\Database\Repositories\UsageRepository;
 use Hiveclerk\Database\Repositories\VisitorRepository;
+use Hiveclerk\Database\Repositories\WorkflowRepository;
+use Hiveclerk\Database\Repositories\WorkflowRunLogRepository;
+use Hiveclerk\Database\Repositories\WorkflowRunRepository;
 use Hiveclerk\Core\Support\RateLimitStoreInterface;
 use Hiveclerk\Domain\Analytics\AnalyticsRepositoryInterface;
 use Hiveclerk\Domain\Analytics\GapRepositoryInterface;
@@ -61,6 +65,9 @@ use Hiveclerk\Domain\Lead\LeadStageRepositoryInterface;
 use Hiveclerk\Domain\Lead\ScoreEventRepositoryInterface;
 use Hiveclerk\Domain\Lead\VisitorRepositoryInterface;
 use Hiveclerk\Domain\Usage\UsageRepositoryInterface;
+use Hiveclerk\Domain\Workflow\RunLogRepositoryInterface;
+use Hiveclerk\Domain\Workflow\WorkflowRepositoryInterface;
+use Hiveclerk\Domain\Workflow\WorkflowRunRepositoryInterface;
 use Hiveclerk\Core\Support\LockInterface;
 use Hiveclerk\Database\Migrator;
 use Hiveclerk\Database\NamedLock;
@@ -102,6 +109,7 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		M0010_LeadPipeline::class,
 		M0011_QualifiedLeadIndex::class,
 		M0012_UnknownCost::class,
+		M0013_Workflows::class,
 	);
 
 	/**
@@ -256,6 +264,21 @@ final class DatabaseServiceProvider extends ServiceProvider {
 		$container->singleton(
 			SuppressionRepositoryInterface::class,
 			static fn (): SuppressionRepositoryInterface => new SuppressionRepository()
+		);
+
+		$container->singleton(
+			WorkflowRepositoryInterface::class,
+			static fn (): WorkflowRepositoryInterface => new WorkflowRepository()
+		);
+
+		$container->singleton(
+			WorkflowRunRepositoryInterface::class,
+			static fn (): WorkflowRunRepositoryInterface => new WorkflowRunRepository()
+		);
+
+		$container->singleton(
+			RunLogRepositoryInterface::class,
+			static fn (): RunLogRepositoryInterface => new WorkflowRunLogRepository()
 		);
 
 		$container->singleton(

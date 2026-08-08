@@ -41,6 +41,9 @@ final class Schema {
 	public const SUPPRESSIONS         = 'hvc_suppressions';
 	public const INTEGRATIONS         = 'hvc_integrations';
 	public const INTEGRATION_LOG      = 'hvc_integration_log';
+	public const WORKFLOWS            = 'hvc_workflows';
+	public const WORKFLOW_RUNS        = 'hvc_workflow_runs';
+	public const WORKFLOW_RUN_LOG     = 'hvc_workflow_run_log';
 	public const USAGE_EVENTS         = 'hvc_usage_events';
 	public const ANALYTICS_DAILY      = 'hvc_analytics_daily';
 	public const UNANSWERED           = 'hvc_unanswered';
@@ -76,6 +79,9 @@ final class Schema {
 			self::SUPPRESSIONS,
 			self::INTEGRATIONS,
 			self::INTEGRATION_LOG,
+			self::WORKFLOWS,
+			self::WORKFLOW_RUNS,
+			self::WORKFLOW_RUN_LOG,
 			self::USAGE_EVENTS,
 			self::ANALYTICS_DAILY,
 			self::UNANSWERED,

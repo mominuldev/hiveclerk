@@ -23,6 +23,7 @@ final class Capabilities {
 	public const MANAGE_LEADS         = 'hiveclerk_manage_leads';
 	public const MANAGE_KNOWLEDGE     = 'hiveclerk_manage_knowledge';
 	public const MANAGE_INTEGRATIONS  = 'hiveclerk_manage_integrations';
+	public const MANAGE_WORKFLOWS     = 'hiveclerk_manage_workflows';
 	public const MANAGE_SETTINGS      = 'hiveclerk_manage_settings';
 
 	/**
@@ -38,6 +39,7 @@ final class Capabilities {
 			self::MANAGE_LEADS,
 			self::MANAGE_KNOWLEDGE,
 			self::MANAGE_INTEGRATIONS,
+			self::MANAGE_WORKFLOWS,
 			self::MANAGE_SETTINGS,
 		);
 	}
@@ -47,6 +49,13 @@ final class Capabilities {
 	 *
 	 * Shop managers get operational access but never settings, because
 	 * settings holds the API key that spends the owner's money.
+	 *
+	 * Workflows are administrator-only for a related reason. A workflow
+	 * can post to a webhook, push a lead to a CRM and start an email
+	 * sequence — every outbound capability the role map deliberately
+	 * withholds from a shop manager, reachable by building a graph. A
+	 * builder gated on `manage_leads` would have been a way around the
+	 * `manage_integrations` gate rather than a separate feature.
 	 *
 	 * @return array<string, array<int, string>>
 	 */

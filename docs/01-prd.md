@@ -89,7 +89,7 @@ Stated explicitly so scope does not creep:
 - Not a content-generation plugin (no blog writer, no SEO writer)
 - Not a voice or phone agent
 - Not a page builder or form builder
-- No visual workflow builder (V2)
+- ~~No visual workflow builder (V2)~~ — **delivered ahead of plan**; see `FR-WFL` in §8.11
 - No multi-agent collaboration (V3)
 - No self-hosted model inference (always an external model API in V1)
 
@@ -300,6 +300,23 @@ Priority: **P0** = launch blocker · **P1** = launch-desirable · **P2** = fast-
 | FR-SYS-08 | White-label mode replaces product name, logo, and colours throughout admin (Agency tier) | P1 |
 | FR-SYS-09 | Multisite compatible; per-site licensing | P2 |
 | FR-SYS-10 | Full uninstall removes tables and options when the user opts in | P0 |
+
+### 8.11 Workflows (`FR-WFL`)
+
+Originally scoped for V2.0-a and brought forward. The requirements below
+describe what shipped, not the full V2 ambition: there is no WooCommerce
+trigger and no multi-agent action, because neither module exists yet.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-WFL-01 | Triggers from existing domain events — lead captured, lead qualified, stage changed, handoff requested — plus a recurring schedule over a filtered lead segment | P0 |
+| FR-WFL-02 | Branching graph of conditions, waits and actions; cycles and unreachable steps are refused before activation, never discovered mid-run | P0 |
+| FR-WFL-03 | Actions delegate to the module that owns the behaviour: enrol in a sequence, move stage, adjust score, add a note, push to CRM, send a webhook, email the team | P0 |
+| FR-WFL-04 | Runs execute in bounded background batches; a wait parks the run rather than blocking, and a request never performs workflow work inline | P0 |
+| FR-WFL-05 | Activation is gated on a per-step blocker list stating which step is not ready and why | P0 |
+| FR-WFL-06 | Dry run against a real lead: conditions evaluated for real, actions described and not performed | P1 |
+| FR-WFL-07 | Per-run, per-step activity log recording the values a condition actually compared; retained 90 days | P0 |
+| FR-WFL-08 | Workflows are Pro-only, and the builder requires its own capability rather than reusing `manage_leads` | P0 |
 
 ---
 

@@ -24,6 +24,11 @@ final class Activator {
 	public static function activate(): void {
 		CapabilityManager::grant();
 
+		// Stamped here as well as by the admin_init sync, so a fresh
+		// install does not spend its first admin request re-granting what
+		// the line above just granted.
+		update_option( 'hiveclerk_caps_version', CapabilityManager::VERSION, true );
+
 		/*
 		 * No onboarding row is seeded. This used to write
 		 * `hiveclerk_onboarding_state`, which Sprint 9's OnboardingState

@@ -120,7 +120,7 @@ enum Tier: string {
 	 */
 	public function includes( Feature $feature ): bool {
 		return match ( $feature ) {
-			Feature::Crm, Feature::EmailSequences, Feature::RemoveBadge => $this->isPaid(),
+			Feature::Crm, Feature::EmailSequences, Feature::Workflows, Feature::RemoveBadge => $this->isPaid(),
 			Feature::Multisite  => in_array( $this, array( self::Business, self::Agency ), true ),
 			Feature::WhiteLabel => self::Agency === $this,
 		};

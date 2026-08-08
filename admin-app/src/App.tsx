@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HashRouter, Navigate, Route, Routes } from 'react-router';
 import { AppShell } from '@/components/layout/AppShell';
 import { Dashboard } from '@/routes/Dashboard';
-import { Placeholder } from '@/routes/Placeholder';
 import { Settings } from '@/routes/settings/Settings';
 import { Providers } from '@/routes/settings/Providers';
 import { AuditLog } from '@/routes/settings/AuditLog';
@@ -36,6 +35,9 @@ import { Branding } from '@/routes/settings/Branding';
 import { Privacy } from '@/routes/settings/Privacy';
 import { SystemStatus } from '@/routes/settings/SystemStatus';
 import { Wizard } from '@/routes/onboarding/Wizard';
+import { Workflows } from '@/routes/workflows/Workflows';
+import { WorkflowBuilder } from '@/routes/workflows/WorkflowBuilder';
+import { WorkflowRuns } from '@/routes/workflows/Runs';
 
 /*
  * A hash router avoids rewrite rules and server configuration entirely,
@@ -59,15 +61,6 @@ const client = new QueryClient({
   },
 });
 
-const SCAFFOLDED = [
-  {
-    path: 'workflows',
-    area: 'Workflows',
-    sprint: 'Version 2.0',
-    summary:
-      'Triggers, conditions, actions and branching. Deliberately out of scope for V1.',
-  },
-] as const;
 
 export function App() {
   return (
@@ -80,6 +73,12 @@ export function App() {
             <Route path="clerks" element={<Clerks />} />
             <Route path="clerks/:uuid" element={<ClerkEditor />} />
             <Route path="conversations" element={<Conversations />} />
+
+            <Route path="workflows" element={<Workflows />} />
+            <Route path="workflows/:uuid/runs" element={<WorkflowRuns />} />
+            {/* Last of the three, so "runs" is matched as a screen rather
+                than swallowed by the builder's :uuid. */}
+            <Route path="workflows/:uuid" element={<WorkflowBuilder />} />
 
             <Route path="leads" element={<LeadsShell />}>
               {/* Redirect rather than an index element, so the tab bar
@@ -147,16 +146,6 @@ export function App() {
               <Route path="system" element={<SystemStatus />} />
               <Route path="audit" element={<AuditLog />} />
             </Route>
-
-            {SCAFFOLDED.map(({ path, area, sprint, summary }) => (
-              <Route
-                key={path}
-                path={path}
-                element={
-                  <Placeholder area={area} sprint={sprint} summary={summary} />
-                }
-              />
-            ))}
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
